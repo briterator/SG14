@@ -7,7 +7,7 @@
     <ClCompile Include="..\..\..\SG14_test\unstable_remove_test.cpp" />
     <ClCompile Include="..\..\..\SG14_test\uninitialized.cpp" />
     <ClCompile Include="..\..\..\SG14_test\plf_test_suite.cpp" />
-    <ClCompile Include="..\..\..\SG14_test\hotset.cpp" />
+    <ClCompile Include="..\..\..\SG14_test\hot_set.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\SG14_test\SG14_test.h" />

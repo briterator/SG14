@@ -8,14 +8,18 @@
 
 struct default_open_addressing_load_algorithm
 {
+	//how many elements can fit in this many buckets
 	size_t occupancy(size_t allocated)
 	{
 		auto half = allocated >> 1;
 		return half + (half >> 2);
 	}
+
+	//how many buckets needed to fulfill this many elements
 	size_t allocated(size_t occupied)
 	{
-		return occupied + (occupied << 2);
+		occupied += occupied >> 2;
+		return 1 << int(ceil(log2(occupied)));
 	}
 };
 
@@ -135,13 +139,13 @@ struct dynamic_tombstone
 template<
 	class T,
 	class Tomb,
+	class Eq = std::equal_to<T>,
 	class Alloc = std::allocator<T>,
 	class Hash = std::hash<T>,
-	class Probe = probe::forward,
 	class Cap = default_open_addressing_load_algorithm,
-	class Eq = std::equal_to<T>
+	class Probe = probe::forward
 >
-class hotset : public Probe, public Alloc, public Tomb
+class hot_set : public Probe, public Alloc, public Tomb
 {
 	T* mbegin;
 	T* mend;
@@ -206,10 +210,10 @@ class hotset : public Probe, public Alloc, public Tomb
 	{
 		auto oldbegin = mbegin;
 		auto oldend = mend;
-		auto size = std::max<size_t>(16, (mend-mbegin) << 1);
+		auto size = std::max<size_t>(32, (mend-mbegin) << 1);
 		mcapacity = cap.occupancy(size);
 
-		mbegin = allocate(size, mbegin);
+		mbegin = allocate(size);
 		mend = mbegin + size;
 		std::fill(mbegin, mend, tombstone());
 		auto Invalid = tombstone();
@@ -241,14 +245,16 @@ class hotset : public Probe, public Alloc, public Tomb
 			}
 			else
 			{
-				auto temp = std::move(*It);
-				*It = Invalid;
-				*find_internal(begin, start, end, c).first = std::move(temp);
+				auto temp = std::move(*at);
+				*at = Invalid;
+				auto put = find_internal(temp).first;
+				*put = std::move(temp);
 				return false;
 			}
 		};
-
-		Probe::operator()(begin, start, end, op);
+		if (start == mend)
+			start = mbegin;
+		Probe::operator()(mbegin, start, mend, op);
 	}
 	void remove_internal(T* found)
 	{
@@ -258,103 +264,16 @@ class hotset : public Probe, public Alloc, public Tomb
 	}
 
 public:
-	hotset() = default;
-	hotset(const hotset& in) = default;
-	hotset(hotset&& in) = default;
-
-	hotset(Tomb itomb, Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
-		: Probe(p)
-		, hash(h)
-		, cap(c)
-		, Alloc(alloc)
-		, Tomb(itomb)
-		, moccupied(0)
-		, mcapacity(0)
-		, mbegin(nullptr)
-		, mend(nullptr)
-	{
-	}
-
-	bool is_invalid(const T& t) const
-	{
-		return eq(tombstone(), t);
-	}
-	size_t reserved() const
-	{
-		return mend - mbegin;
-	}
-	size_t capacity() const
-	{
-		return mcapacity;
-	}
-	size_t size() const
-	{
-		return moccupied;
-	}
-
-	template<class U>
-	T* insert(U&& value)
-	{
-		if (mcapacity == moccupied)
-		{
-			return rehash(std::forward<U>(value));
-		}
-		auto result = insert_internal(std::forward<U>(value));
-		moccupied += uint32_t(result.second == false);
-		return result.first;
-	}
-
-	void erase(const T* value)
-	{
-		remove_internal(value);
-	}
-	bool erase(const T& value)
-	{
-		auto found = find_internal(item);
-		if (found.second)
-		{
-			remove_internal(found.first);
-			return true;
-		}
-		return false;
-	}
-	T tombstone() const
-	{
-		return Tomb::operator()();
-	}
-	bool empty() const
-	{
-		return moccupied == 0;
-	}
-	bool clear()
-	{
-		std::fill(begin, end, tombstone());
-		moccupied = 0;
-	}
-
-	template<class U>
-	const T* find(const U& value) const
-	{
-		auto result = find_internal(value);
-		return result.second ? result.first : mend;
-	}
-
-	template<class U>
-	bool contains(const U& value) const
-	{
-		return find_internal(value).second;
-	}
-
 	// this is poorly implemented due to restrictions on range-for loops.
 	// efficiency can be improved notably when range-v3 enables heterogeneous iterators
 	struct iterator : std::iterator< std::bidirectional_iterator_tag, T>
 	{
-		const hotset& set;
+		const hot_set& set;
 		T* pos;
 		T* end;
 
-		iterator(T* at, const hotset& inh)
-			:pos(at-1), set(inh), end(inh.mend)
+		iterator(T* at, const hot_set& inh)
+			:pos(at - 1), set(inh), end(inh.mend)
 		{
 			++(*this);
 		}
@@ -390,6 +309,129 @@ public:
 		}
 	};
 
+	hot_set()
+		: mbegin()
+		, mend()
+		, mcapacity()
+		, moccupied()
+	{}
+
+	hot_set(const hot_set& in)
+		: Probe(in)
+		, Alloc(in)
+		, Tomb(in)
+		, mcapacity(in.mcapacity)
+		, moccupied(in.moccupied)
+		, hash(in.hash)
+		, cap(in.cap)
+		, eq(in.eq)
+	{
+		auto size = in.reserved();
+		mbegin = allocate(size);
+		mend = mbegin + size;
+		std::copy(in.mbegin, in.mend, mbegin);
+	}
+	hot_set(hot_set&& in)
+		:mbegin(in.mbegin)
+		, mend(in.mend)
+		, mcapacity(in.mcapacity)
+		, moccupied(in.moccupied)
+		, Probe(std::move(in))
+		, Alloc(std::move(in))
+		, hash(std::move(in.hash))
+		, cap(std::move(in.cap))
+		, eq(std::move(in.eq))
+	{
+		in.mcapacity = 0;
+		in.moccupied = 0;
+		in.mbegin = nullptr;
+		in.mend = nullptr;
+	}
+
+	hot_set(Tomb itomb, size_t init_capacity, Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+		: Probe(p)
+		, hash(h)
+		, cap(c)
+		, Alloc(alloc)
+		, Tomb(itomb)
+		, moccupied(0)
+		, mcapacity(0)
+		, mbegin(nullptr)
+		, mend(nullptr)
+	{
+		init(cap.allocated(init_capacity));
+	}
+
+	bool is_invalid(const T& t) const
+	{
+		return eq(tombstone(), t);
+	}
+	size_t reserved() const
+	{
+		return mend - mbegin;
+	}
+	size_t capacity() const
+	{
+		return mcapacity;
+	}
+	size_t size() const
+	{
+		return moccupied;
+	}
+
+	template<class U>
+	iterator insert(U&& value)
+	{
+		if (mcapacity == moccupied)
+		{
+			return iterator(rehash(std::forward<U>(value)), *this);
+		}
+		auto result = insert_internal(std::forward<U>(value));
+		moccupied += uint32_t(result.second == false);
+		return iterator(result.first, *this);
+	}
+
+	void erase(iterator value)
+	{
+		remove_internal(value.base());
+	}
+	bool erase(const T& value)
+	{
+		auto found = find_internal(value);
+		if (found.second)
+		{
+			remove_internal(found.first);
+			return true;
+		}
+		return false;
+	}
+	T tombstone() const
+	{
+		return Tomb::operator()();
+	}
+	bool empty() const
+	{
+		return moccupied == 0;
+	}
+	bool clear()
+	{
+		std::fill(begin, end, tombstone());
+		moccupied = 0;
+	}
+
+	template<class U>
+	iterator find(const U& value) const
+	{
+		auto result = find_internal(value);
+		return iterator(result.second ? result.first : mend, *this);
+	}
+
+	template<class U>
+	bool contains(const U& value) const
+	{
+		return find_internal(value).second;
+	}
+
 	iterator begin() const
 	{
 		return iterator(mbegin, *this);
@@ -399,7 +441,7 @@ public:
 	{
 		return iterator(mend, *this);
 	}
-	~hotset()
+	~hot_set()
 	{
 		stdext::destroy(mbegin, mend);
 		Alloc::deallocate(mbegin, mend-mbegin);
@@ -408,5 +450,20 @@ public:
 
 };
 
-template<class T> using hodtset = hotset< T, dynamic_tombstone<T> >;
-template<class T, T val> using hostset = hotset< T, static_tombstone<T, val> >;
+class key_eq
+{
+	template<class A, class B>
+	bool operator()(const A& a, const std::pair<A,B>& b)
+	{
+		return a.first == b;
+	}
+	template<class A, class B>
+	bool operator()(const std::pair<A, B>& a, const B& b)
+	{
+		return a.first == b;
+	}
+};
+template<class T> using hod_set = hot_set< T, dynamic_tombstone<T> >;
+template<class T, T tombstone> using hos_set = hot_set< T, static_tombstone<T, tombstone> >;
+//template<class K, class V> using hod_map = hot_set< std::pair<K, V>, dynamic_tombstone<K> ,key_eq >;
+//template<class K, K tombstone, class V> using hos_map = hot_set< std::pair<K, V>, static_tombstone<K, tombstone>, key_eq>;

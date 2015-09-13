@@ -8,6 +8,7 @@ namespace sg14_test
 	void uninitialized();
 	void fixed_point_test();
 	void plf_test_suite();
+	void hotset();
 }
 
 #endif
