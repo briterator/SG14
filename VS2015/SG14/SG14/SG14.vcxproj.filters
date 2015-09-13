@@ -6,5 +6,6 @@
     <ClInclude Include="..\..\..\SG14\fixed_point.h" />
     <ClInclude Include="..\..\..\SG14\plf_colony.h" />
     <ClInclude Include="..\..\..\SG14\plf_stack.h" />
+    <ClInclude Include="..\..\..\SG14\hotset.h" />
   </ItemGroup>
 </Project>

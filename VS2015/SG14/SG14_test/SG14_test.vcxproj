@@ -81,6 +81,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\SG14_test\fixed_point_test.cpp" />
+    <ClCompile Include="..\..\..\SG14_test\hotset.cpp" />
     <ClCompile Include="..\..\..\SG14_test\main.cpp" />
     <ClCompile Include="..\..\..\SG14_test\uninitialized.cpp" />
     <ClCompile Include="..\..\..\SG14_test\plf_test_suite.cpp" />
