@@ -53,7 +53,7 @@ namespace
 			lifetest::test(0, 0, 0);
 			stdext::uninitialized_value_construct(m, m + n);
 			lifetest::test(n, 0, 0);
-			stdext::destruct(m, m + n);
+			stdext::destroy(m, m + n);
 			lifetest::test(n, n, 0);
 			free(m);
 			lifetest::reset();
@@ -77,7 +77,7 @@ namespace
 			auto mem2 = (lifetest*)malloc(sizeof(lifetest) * n);
 			stdext::uninitialized_move(mem1, mem1 + n, mem2);
 			lifetest::test(n, 0, n);
-			stdext::destruct(mem2, mem2 + n);
+			stdext::destroy(mem2, mem2 + n);
 			lifetest::test(n, n, n);
 			free(mem1);
 			free(mem2);

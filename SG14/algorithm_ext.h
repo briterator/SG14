@@ -3,7 +3,7 @@
 namespace stdext
 {
 	template<class ForwardIterator>
-	void destruct(ForwardIterator begin, ForwardIterator end)
+	void destroy(ForwardIterator begin, ForwardIterator end)
 	{
 		typedef typename std::iterator_traits<ForwardIterator>::value_type _T;
 		while (begin != end)
@@ -14,8 +14,8 @@ namespace stdext
 	}
 
 
-	template<class SrcIt, class Sentinel, class FwdIt>
-	FwdIt uninitialized_move(SrcIt SrcBegin, Sentinel SrcEnd, FwdIt Dst)
+	template<class InputIt, class FwdIt>
+	FwdIt uninitialized_move(InputIt SrcBegin, InputIt SrcEnd, FwdIt Dst)
 	{
 		FwdIt current = Dst;
 		try
@@ -30,14 +30,14 @@ namespace stdext
 		}
 		catch (...)
 		{
-			destruct(Dst, current);
+			destroy(Dst, current);
 			throw;
 		}
 
 	}
 
-	template<class FwdIt, class Sentinel>
-	FwdIt uninitialized_value_construct(FwdIt first, Sentinel last)
+	template<class FwdIt>
+	FwdIt uninitialized_value_construct(FwdIt first, FwdIt last)
 	{
 		FwdIt current = first;
 		try
@@ -51,14 +51,14 @@ namespace stdext
 		}
 		catch (...)
 		{
-			destruct(first, current);
+			destroy(first, current);
 			throw;
 		}
 
 	}
 	
-	template<class FwdIt, class Sentinel>
-	FwdIt uninitialized_default_construct(FwdIt first, Sentinel last)
+	template<class FwdIt>
+	FwdIt uninitialized_default_construct(FwdIt first, FwdIt last)
 	{
 		FwdIt current = first;
 		try
@@ -72,7 +72,7 @@ namespace stdext
 		}
 		catch (...)
 		{
-			destruct(first, current);
+			destroy(first, current);
 			throw;
 		}
 	}
@@ -94,7 +94,7 @@ namespace stdext
 		return first;
 	}
 	template<class BidirIt, class Val>
-	BidirIt unstable_remove(BidirIt first, BidirIt last, Val v)
+	BidirIt unstable_remove(BidirIt first, BidirIt last, const Val& v)
 	{
 		while (1) {
 			while ((first != last) && (*first == v)) {
