@@ -108,9 +108,9 @@ namespace probe
 }
 
 
-
+// Tombstone generators
 template<class T, T key>
-struct static_tombstone
+struct static_value
 {
 	T operator()() const
 	{
@@ -119,14 +119,14 @@ struct static_tombstone
 };
 
 template<class K>
-struct dynamic_tombstone
+struct dynamic_value
 {
 	K key;
-	dynamic_tombstone() = default;
-	dynamic_tombstone(const K& k)
+	dynamic_value() = default;
+	dynamic_value(const K& k)
 		:key(k)
 	{}
-	dynamic_tombstone(K&& k)
+	dynamic_value(K&& k)
 		:key(std::move(k))
 	{}
 
@@ -138,7 +138,7 @@ struct dynamic_tombstone
 
 template<
 	class T,												//contained type
-	class Tomb,												//tombstone provider
+	class Tomb,												//tombstone generator function
 	class Eq = std::equal_to<T>,							//determines how the tombstone is compared against values
 	class Alloc = std::allocator<T>,						//determines how elements are allocated
 	class Hash = std::hash<T>,								//determines how elements are hashed
@@ -463,7 +463,7 @@ class key_eq
 		return a.first == b;
 	}
 };
-template<class T> using hod_set = hot_set< T, dynamic_tombstone<T> >;
-template<class T, T tombstone> using hos_set = hot_set< T, static_tombstone<T, tombstone> >;
-//template<class K, class V> using hod_map = hot_set< std::pair<K, V>, dynamic_tombstone<K> ,key_eq >;
-//template<class K, K tombstone, class V> using hos_map = hot_set< std::pair<K, V>, static_tombstone<K, tombstone>, key_eq>;
+template<class T> using hod_set = hot_set< T, dynamic_value<T> >;
+template<class T, T tombstone> using hos_set = hot_set< T, static_value<T, tombstone> >;
+//template<class K, class V> using hod_map = hot_set< std::pair<K, V>, dynamic_value<K> ,key_eq >;
+//template<class K, K tombstone, class V> using hos_map = hot_set< std::pair<K, V>, static_value<K, tombstone>, key_eq>;
