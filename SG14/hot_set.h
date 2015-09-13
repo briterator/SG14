@@ -142,7 +142,7 @@ template<
 	class Eq = std::equal_to<T>,							//determines how the tombstone is compared against values
 	class Alloc = std::allocator<T>,						//determines how elements are allocated
 	class Hash = std::hash<T>,								//determines how elements are hashed
-	class Cap = default_open_addressing_load_algorithm, 	//load algorithm, must recommend power-of-two allocations
+	class Cap = default_open_addressing_load_algorithm, 	//load algorithm, must give allocations with power-of-two # of elements
 	class Probe = probe::forward							//determines how elements are probed for collisions
 >
 class hot_set : public Probe, public Alloc, public Tomb
@@ -185,15 +185,14 @@ class hot_set : public Probe, public Alloc, public Tomb
 	{
 		auto found = false;
 		auto Invalid = tombstone();
-		auto Eq = eq;
-		auto op = [&found, &in, &Invalid, &Eq](T* at)
+		auto op = [&found, &in, &Invalid, this](T* at)
 		{
-			if (Eq(Invalid, *at))
+			if (eq(Invalid, *at))
 			{
 				found = false;
 				return true;
 			}
-			else if (Eq(in, *at))
+			else if (eq(in, *at))
 			{
 				found = true;
 				return true;
@@ -366,19 +365,27 @@ public:
 	{
 		return eq(tombstone(), t);
 	}
+
+	//number of elements allocated by the set
 	size_t reserved() const
 	{
 		return mend - mbegin;
 	}
+
+	//number of elements the set may contain before reallocating
 	size_t capacity() const
 	{
 		return mcapacity;
 	}
+
+	//number of elements in the set
 	size_t size() const
 	{
 		return moccupied;
 	}
 
+	//Inserts an element into the set
+	//If size() == capacity(), invalidates any iterators
 	template<class U>
 	iterator insert(U&& value)
 	{
@@ -391,10 +398,13 @@ public:
 		return iterator(result.first, *this);
 	}
 
+	//Removes element, invalidating the iterator
 	void erase(iterator value)
 	{
 		remove_internal(value.base());
 	}
+
+	//removes element, potentially invalidating iterators (it may rehash a portion of the set)
 	bool erase(const T& value)
 	{
 		auto found = find_internal(value);
@@ -409,10 +419,13 @@ public:
 	{
 		return Tomb::operator()();
 	}
+
 	bool empty() const
 	{
 		return moccupied == 0;
 	}
+
+	//invalidates all iterators
 	bool clear()
 	{
 		std::fill(begin, end, tombstone());
@@ -441,6 +454,10 @@ public:
 	{
 		return iterator(mend, *this);
 	}
+
+	//could be useful for iterating elements more efficiently. User must manually skip tombstones.
+	//array_view<T> unsafe_view(){ return {mbegin, mend}; }
+
 	~hot_set()
 	{
 		stdext::destroy(mbegin, mend);
