@@ -44,9 +44,9 @@ It probe_forward(It begin, It start, It end, Pred f)
 	return end;
 }
 
-//alternating divergent series
+//alternating divergent series 
 template<class It, class Pred>
-void probe_nearest(It begin, It current, It end, Pred op)
+It probe_nearest(It begin, It start, It end, Pred op)
 {
 	auto It = start;
 	ptrdiff_t offset = 1;
@@ -137,13 +137,13 @@ struct dynamic_tombstone
 };
 
 template<
-	class T,
-	class Tomb,
-	class Eq = std::equal_to<T>,
-	class Alloc = std::allocator<T>,
-	class Hash = std::hash<T>,
-	class Cap = default_open_addressing_load_algorithm,
-	class Probe = probe::forward
+	class T,												//contained type
+	class Tomb,												//tombstone provider
+	class Eq = std::equal_to<T>,							//determines how the tombstone is compared against values
+	class Alloc = std::allocator<T>,						//determines how elements are allocated
+	class Hash = std::hash<T>,								//determines how elements are hashed
+	class Cap = default_open_addressing_load_algorithm, 	//load algorithm, must recommend power-of-two allocations
+	class Probe = probe::forward							//determines how elements are probed for collisions
 >
 class hot_set : public Probe, public Alloc, public Tomb
 {
