@@ -76,7 +76,5 @@ namespace sg14_test
 		
 		hotset_each_test(dyset);
 		hotset_each_test(stset);
-
-		std::cin.get();
 	}
 }
