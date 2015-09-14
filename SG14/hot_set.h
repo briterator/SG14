@@ -122,7 +122,9 @@ template<class K>
 struct dynamic_value
 {
 	K key;
-	dynamic_value() = default;
+	dynamic_value()
+		:key()
+	{}
 	dynamic_value(const K& k)
 		:key(k)
 	{}
