@@ -23,6 +23,7 @@ struct default_open_addressing_load_algorithm
 	}
 };
 
+//like find_if but has an internal starting point and uses wrap-around
 template<class It, class Pred>
 It probe_forward(It begin, It start, It end, Pred f)
 {
@@ -44,7 +45,7 @@ It probe_forward(It begin, It start, It end, Pred f)
 	return end;
 }
 
-//alternating divergent series 
+//like probe_forward but probes the nearest unprobed element
 template<class It, class Pred>
 It probe_nearest(It begin, It start, It end, Pred op)
 {
@@ -83,6 +84,9 @@ It probe_nearest(It begin, It start, It end, Pred op)
 	}
 	return end;
 }
+
+//probing algorithms
+//class wrappers provide easy template deduction
 namespace probe
 {
 	struct forward
@@ -108,7 +112,7 @@ namespace probe
 }
 
 
-// Tombstone generators
+// generator functions
 template<class T, T key>
 struct static_value
 {
@@ -139,13 +143,14 @@ struct dynamic_value
 };
 
 template<
-	class T,												//contained type
-	class Tomb,												//tombstone generator function
-	class Eq = std::equal_to<T>,							//determines how the tombstone is compared against values
-	class Alloc = std::allocator<T>,						//determines how elements are allocated
-	class Hash = std::hash<T>,								//determines how elements are hashed
-	class Cap = default_open_addressing_load_algorithm, 	//load algorithm, must give allocations with power-of-two # of elements
-	class Probe = probe::forward							//determines how elements are probed for collisions
+	class T,					//contained type
+	class Tomb,					//tombstone generator function
+	class Eq = std::equal_to<T>,//element comparator
+	class Alloc = std::allocator<T>,
+	class Hash = std::hash<T>,	
+	//load algorithm, must give allocations with power-of-two # of elements
+	class Cap = default_open_addressing_load_algorithm, 
+	class Probe = probe::forward	//determines how elements are probed for collisions
 >
 class hot_set : public Probe, public Alloc, public Tomb
 {
@@ -332,6 +337,7 @@ public:
 		mend = mbegin + size;
 		std::copy(in.mbegin, in.mend, mbegin);
 	}
+
 	hot_set(hot_set&& in)
 		:mbegin(in.mbegin)
 		, mend(in.mend)
@@ -400,13 +406,13 @@ public:
 		return iterator(result.first, *this);
 	}
 
-	//Removes element, invalidating the iterator
+	//Removes element, assume that this invalidates all iterators.
 	void erase(iterator value)
 	{
 		remove_internal(value.base());
 	}
 
-	//removes element, potentially invalidating iterators (it may rehash a portion of the set)
+	//removes element, assume that this invalidates all iterators.
 	bool erase(const T& value)
 	{
 		auto found = find_internal(value);
