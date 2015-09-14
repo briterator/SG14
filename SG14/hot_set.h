@@ -347,7 +347,7 @@ public:
 		in.mend = nullptr;
 	}
 
-	hot_set(Tomb itomb, size_t init_capacity, Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+	hot_set(Tomb itomb, size_t init_capacity=0, Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
 		: Probe(p)
 		, hash(h)
 		, cap(c)

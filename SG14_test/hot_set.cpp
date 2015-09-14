@@ -73,7 +73,7 @@ namespace sg14_test
 	{
 		auto dyset = [] {return hod_set<int>{-1, 32};}; //hotset with runtime tombstone
 		auto stset = [] {return hos_set<int, -1>{ {}, 64}; }; //hotset with compile-time tombstone
-		
+		auto z = hod_set<std::string>{ std::string(), 64 };
 		hotset_each_test(dyset);
 		hotset_each_test(stset);
 	}
