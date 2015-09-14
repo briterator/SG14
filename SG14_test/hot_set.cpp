@@ -69,11 +69,47 @@ namespace sg14_test
 		hotset_test_3(func());
 	}
 
+	void hotmap_each_test()
+	{
+		hod_map<int, const char*> english_text;
+		english_text.insert(5, "five");
+		english_text.insert(std::make_pair(33, "thirty three"));
+		english_text.insert(6, "six");
+		english_text.insert(2, "two");
+		english_text.insert(1, "one");
+		english_text.erase(5);
+		assert(english_text.contains(6));
+		assert(english_text.contains(1));
+	}
+
+	void hotmultimap_each_test()
+	{
+		hod_multimap<int, const char*> foo{ 8,  -1, nullptr };
+		foo.insert(3, "3");
+		foo.insert(3, "three");
+		foo.insert(3, "tres");
+		foo.insert(3, "drei");
+
+		foo.insert(5, "five");
+		foo.insert(5, "funf");
+
+		foo.insert(200, "two hundred");
+		foo.insert(3893, "three eight nine three");
+
+		for (auto& elem : foo)
+		{
+			std::cout << elem.key << "=" << elem.value << std::endl;
+		}
+	}
 	void hotset()
 	{
-		auto dyset = [] {return hod_set<int>{-1, 32};}; //hotset with runtime tombstone
-		auto stset = [] {return hos_set<int, -1>{ {}, 64}; }; //hotset with compile-time tombstone
-		auto z = hod_set<std::string>{ std::string(), 64 };
+		auto dyset = [] {return hod_set<int>{32, -1 }; }; //hotset with runtime tombstone
+		auto stset = [] {return hos_set<int, -1>{ 64, }; }; //hotset with compile-time tombstone
+		auto z = hod_set<std::string>{ 64 };
+
+		hotmap_each_test();
+		hotmultimap_each_test();
+		
 		hotset_each_test(dyset);
 		hotset_each_test(stset);
 	}

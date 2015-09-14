@@ -145,7 +145,7 @@ struct dynamic_value
 template<
 	class T,					//contained type
 	class Tomb,					//tombstone generator function
-	class Eq = std::equal_to<T>,//element comparator
+	class Eq = std::equal_to<void>,//element comparator
 	class Alloc = std::allocator<T>,
 	class Hash = std::hash<T>,	
 	//load algorithm, must give allocations with power-of-two # of elements
@@ -355,7 +355,7 @@ public:
 		in.mend = nullptr;
 	}
 
-	hot_set(Tomb itomb, size_t init_capacity=0, Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+	hot_set(size_t init_capacity, Tomb itomb = Tomb(),  Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
 		: Probe(p)
 		, hash(h)
 		, cap(c)
@@ -475,20 +475,143 @@ public:
 
 };
 
-class key_eq
+template<class K, class V>
+struct hot_pair
 {
-	template<class A, class B>
-	bool operator()(const A& a, const std::pair<A,B>& b)
+	K key;
+	V value;
+	constexpr hot_pair()
+		:key(), value()
+	{}
+
+	constexpr hot_pair(const K& k)
+		:key(k)
+		,value()
+	{}
+	template<class KK, class VV>
+	constexpr hot_pair(KK&& k, VV&& v)
+		: key(std::forward<KK>(k)), value(std::forward<VV>(v))
+	{}
+
+	operator const K&() const
 	{
-		return a.first == b;
+		return key;
 	}
-	template<class A, class B>
-	bool operator()(const std::pair<A, B>& a, const B& b)
+	bool operator==(const hot_pair<K, V>& other) const
 	{
-		return a.first == b;
+		return other.key == key && other.value == value;
 	}
 };
+template<class K, class V>
+struct hot_pair_by_key
+
+	bool operator()(const hot_pair<K,V>& a, const hot_pair<K,V>& b) const
+	{
+		return a.key == b.key;
+	}
+};
+
+
+namespace std
+{
+	template<class K, class V>
+	struct hash<hot_pair<K, V>>
+	{
+		size_t operator()(const hot_pair<K, V>& p) const
+		{
+			std::hash<K> h;
+			return h(p.key);
+		}
+	};
+}
+
+
+
 template<class T> using hod_set = hot_set< T, dynamic_value<T> >;
 template<class T, T tombstone> using hos_set = hot_set< T, static_value<T, tombstone> >;
-//template<class K, class V> using hod_map = hot_set< std::pair<K, V>, dynamic_value<K> ,key_eq >;
-//template<class K, K tombstone, class V> using hos_map = hot_set< std::pair<K, V>, static_value<K, tombstone>, key_eq>;
+
+//Map implementation, unique keys
+//The map provides a key which it shall never insert.
+
+template<
+	class K, class V,
+	class Tomb,	
+	class Eq = std::equal_to<void>,
+	class Alloc = std::allocator<hot_pair<K,V>>,
+	class Hash = std::hash<K>,
+	class Cap = default_open_addressing_load_algorithm,
+	class Probe = probe::forward
+>
+class hot_map : public hot_set<hot_pair<K,V>, Tomb, Eq, Alloc, Hash, Cap, Probe>
+{
+	typedef hot_set<hot_pair<K, V>, Tomb, Eq, Alloc, Hash, Cap, Probe> Super;
+public:
+	hot_map() = default;
+	hot_map(hot_map&&) = default;
+	hot_map(const hot_map&) = default;
+	hot_map(size_t init_capacity, K tombstone_key, V tombstone_value,  Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+		: Super(init_capacity, hot_pair<K,V>(std::move(tombstone_key), std::move(tombstone_value)),  p, h, c, alloc)
+	{}
+
+	template<class KK, class VV>
+	iterator insert(KK&& key, VV&& value)
+	{
+		return Super::insert(hot_pair<K, V>{std::forward<KK>(key), std::forward<VV>(value)});
+	}
+
+	iterator insert(std::pair<K, V>&& in)
+	{
+		return Super::insert(hot_pair<K, V>{std::move(in.first), std::move(in.second)});
+	}
+
+	iterator insert(const std::pair<K, V>& in)
+	{
+		return Super::insert(hot_pair<K, V>{in.first, in.second});
+	}
+};
+
+template<class K, class V> using hod_map = hot_map<K, V, dynamic_value<K> , hot_pair_by_key<K,V>>;
+template<class K, K tombstone, class V> using hos_map = hot_map< K, V, static_value<K, tombstone>, hot_pair_by_key<K,V>>;
+
+
+//Map implementation, duplicate keys allowed
+//the map provides a key-value pair which it shall never insert.
+template<
+	class K, class V,
+	class Tomb,
+	class Eq = std::equal_to<void>,
+	class Alloc = std::allocator<hot_pair<K, V>>,
+	class Hash = std::hash<K>,
+	class Cap = default_open_addressing_load_algorithm,
+	class Probe = probe::forward
+>
+class hot_multimap : public hot_map<hot_pair<K, V>, Tomb, Eq, Alloc, Hash, Cap, Probe>
+{
+	typedef hot_set<hot_pair<K, V>, Tomb, Eq, Alloc, Hash, Cap, Probe> Super;
+public:
+	hot_multimap() = default;
+	hot_multimap(hot_multimap&&) = default;
+	hot_multimap(const hot_multimap&) = default;
+	hot_multimap(size_t init_capacity, Tomb itomb = Tomb(), Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+		: Super(init_capacity, itomb,  p, h, c, alloc)
+	{}
+
+	template<class KK, class VV>
+	iterator contains(KK&& key, VV&& value)
+	{
+		return Super::insert(hot_pair<K, V>{std::forward<KK>(key), std::forward<VV>(value)});
+	}
+
+	iterator contains(std::pair<K, V>&& in)
+	{
+		return Super::insert(hot_pair<K, V>{std::move(in.first), std::move(in.second)});
+	}
+
+	iterator contains(const std::pair<K, V>& in)
+	{
+		return Super::insert(hot_pair<K, V>{in.first, in.second});
+	}
+};
+
+
+template<class K, class V> using hod_multimap = hot_map<K, V, dynamic_value<hot_pair<K, V>> >;
