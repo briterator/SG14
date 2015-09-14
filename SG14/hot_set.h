@@ -504,7 +504,7 @@ struct hot_pair
 };
 template<class K, class V>
 struct hot_pair_by_key
-
+{
 	bool operator()(const hot_pair<K,V>& a, const hot_pair<K,V>& b) const
 	{
 		return a.key == b.key;
@@ -596,21 +596,7 @@ public:
 		: Super(init_capacity, itomb,  p, h, c, alloc)
 	{}
 
-	template<class KK, class VV>
-	iterator contains(KK&& key, VV&& value)
-	{
-		return Super::insert(hot_pair<K, V>{std::forward<KK>(key), std::forward<VV>(value)});
-	}
 
-	iterator contains(std::pair<K, V>&& in)
-	{
-		return Super::insert(hot_pair<K, V>{std::move(in.first), std::move(in.second)});
-	}
-
-	iterator contains(const std::pair<K, V>& in)
-	{
-		return Super::insert(hot_pair<K, V>{in.first, in.second});
-	}
 };
 
 
