@@ -73,7 +73,7 @@ namespace sg14_test
 	{
 		hod_map<int, const char*> english_text;
 		english_text.insert(5, "five");
-		english_text.insert(std::make_pair(33, "thirty three"));
+		english_text.insert(33, "thirty three");
 		english_text.insert(6, "six");
 		english_text.insert(2, "two");
 		english_text.insert(1, "one");
@@ -84,7 +84,7 @@ namespace sg14_test
 
 	void hotmultimap_each_test()
 	{
-		hod_multimap<int, const char*> foo{ 8,  -1, nullptr };
+		auto foo = hod_multimap<int, const char*>( 8,  -1, (const char*)nullptr );
 		foo.insert(3, "3");
 		foo.insert(3, "three");
 		foo.insert(3, "tres");
@@ -93,8 +93,10 @@ namespace sg14_test
 		foo.insert(5, "five");
 		foo.insert(5, "funf");
 
-		foo.insert(200, "two hundred");
+		auto a = "two hundred";
+		foo.insert(200, a);
 		foo.insert(3893, "three eight nine three");
+		assert(foo.find(200, a) != foo.end());
 
 		for (auto& elem : foo)
 		{
