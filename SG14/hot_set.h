@@ -18,6 +18,8 @@ struct default_open_addressing_load_algorithm
 	//how many buckets needed to fulfill this many elements
 	size_t allocated(size_t occupied)
 	{
+		if (occupied == 0)
+			return 0;
 		occupied += occupied >> 2;
 		return 1 << int(ceil(log2(occupied)));
 	}
@@ -28,11 +30,11 @@ template<class It, class Pred>
 It probe_forward(It begin, It start, It end, Pred f)
 {
 	auto It = start;
-	for (unsigned pass = 0; pass < 2; ++pass)
+	while (true)
 	{
 		do
 		{
-			if (f(It))
+			if (f(*It))
 			{
 				return It;
 			}
@@ -42,7 +44,6 @@ It probe_forward(It begin, It start, It end, Pred f)
 		end = start;
 		It = begin;
 	}
-	return end;
 }
 
 //like probe_forward but probes the nearest unprobed element
@@ -53,7 +54,7 @@ It probe_nearest(It begin, It start, It end, Pred op)
 	ptrdiff_t offset = 1;
 	while (It != end && It != begin - 1)
 	{
-		if (op(It))
+		if (op(*It))
 		{
 			return It;
 		}
@@ -98,7 +99,7 @@ namespace probe
 	{
 		template<class It, class Pred> auto operator()(It begin, It start, It end, Pred p) const
 		{
-			p(s);
+			p(*start);
 			return start;
 		}
 	};
@@ -172,8 +173,9 @@ class hot_set : public Probe, public Alloc, public Tomb
 		if (size > 0)
 		{
 			//assert(powerOfTwo(size));
-			allocate(size);
-			std::fill(mbegin, mend, tombstone());
+			mbegin = allocate(size);
+			mend = mbegin + size;
+			std::uninitialized_fill(mbegin, mend, tombstone());
 			moccupied = 0;
 			mcapacity = cap.occupancy(mend - mbegin);
 		}
@@ -192,14 +194,14 @@ class hot_set : public Probe, public Alloc, public Tomb
 	{
 		auto found = false;
 		auto Invalid = tombstone();
-		auto op = [&found, &in, &Invalid, this](T* at)
+		auto op = [&found, &in, &Invalid, this](const T& at)
 		{
-			if (eq(Invalid, *at))
+			if (eq(Invalid, at))
 			{
 				found = false;
 				return true;
 			}
-			else if (eq(in, *at))
+			else if (eq(in, at))
 			{
 				found = true;
 				return true;
@@ -243,16 +245,16 @@ class hot_set : public Probe, public Alloc, public Tomb
 	void partial_rehash(T* start)
 	{
 		const auto Invalid = tombstone();
-		auto op = [this, &Invalid](T* at)
+		auto op = [this, &Invalid](T& at)
 		{
-			if (eq(*at, Invalid))
+			if (eq(at, Invalid))
 			{
 				return true;
 			}
 			else
 			{
-				auto temp = std::move(*at);
-				*at = Invalid;
+				auto temp = std::move(at);
+				at = Invalid;
 				auto put = find_internal(temp).first;
 				*put = std::move(temp);
 				return false;
