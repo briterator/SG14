@@ -91,7 +91,7 @@ namespace probe
 {
 	struct forward
 	{
-		template<class... T> auto operator()(T... s)  const
+		template<class... T>  auto operator()(T... s)  const
 		{ return probe_forward(std::forward<T>(s)...); }
 	};
 	struct perfect
@@ -279,9 +279,8 @@ public:
 		T* end;
 
 		iterator(T* at, const hot_set& inh)
-			:pos(at - 1), set(inh), end(inh.mend)
+			:pos(at), set(inh), end(inh.mend)
 		{
-			++(*this);
 		}
 
 		const T& operator*() const
@@ -455,7 +454,9 @@ public:
 
 	iterator begin() const
 	{
-		return iterator(mbegin, *this);
+		auto result = iterator(mbegin-1, *this);
+		++result;
+		return result;
 	}
 
 	iterator end() const
