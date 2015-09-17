@@ -116,14 +116,19 @@ namespace sg14_test
 		{
 			a.insert(rand());
 		}
+		auto end = a.end();
 		for (int j = 0; j < i; ++j)
 		{
-			a.find(j);
+			auto got= a.find(j);
+			if (got != end && *got != j)
+			{
+				__asm int 3;
+			}
 		}
 		return (std::chrono::high_resolution_clock::now() - t0).count();
 	}
 	template<class T>
-	void print_timing(const char* file, T begin, T end)
+	void save_timing(const char* file, T begin, T end)
 	{
 		std::ofstream out(file);
 		while (begin != end)
@@ -146,9 +151,9 @@ namespace sg14_test
 			hotsettimes[i] = do_set_test(i, [](size_t N) { return hos_set<int, -1>(N); });
 			settimes[i] = do_set_test(i, [](size_t N) { return std::set<int>(); });
 		}
-		//save_timing("set.csv", settimes.begin(), settimes.end());
-		//save_timing("hos_set.csv", hotsettimes.begin(), hotsettimes.end());
-		//save_timing("unordered.csv", unorderedsettimes.begin(), unorderedsettimes.end());
+		save_timing("set.csv", settimes.begin(), settimes.end());
+		save_timing("hos_set.csv", hotsettimes.begin(), hotsettimes.end());
+		save_timing("unordered.csv", unorderedsettimes.begin(), unorderedsettimes.end());
 	}
 	void hotset()
 	{
