@@ -2,7 +2,11 @@
 #include <cassert>
 #include "hot_set.h"
 #include <iostream>
-
+#include <chrono>
+#include <set>
+#include <vector>
+#include <unordered_set>
+#include <fstream>
 namespace sg14_test
 {
 	template<class T>
@@ -103,6 +107,49 @@ namespace sg14_test
 			std::cout << elem.key << "=" << elem.value << std::endl;
 		}
 	}
+	template<class Generator>
+	auto do_set_test(int i, Generator g)
+	{
+		auto t0 = std::chrono::high_resolution_clock::now();
+		auto a = g(i);
+		for (int j = 0; j < i; ++j)
+		{
+			a.insert(rand());
+		}
+		for (int j = 0; j < i; ++j)
+		{
+			a.find(j);
+		}
+		return (std::chrono::high_resolution_clock::now() - t0).count();
+	}
+	template<class T>
+	void print_timing(const char* file, T begin, T end)
+	{
+		std::ofstream out(file);
+		while (begin != end)
+		{
+			out << *begin;
+			out << ",";
+			++begin;
+		}
+	}
+	void perf_tests()
+	{
+		size_t N = 10000;
+		std::vector<uint32_t> unorderedsettimes(N);
+		std::vector<uint32_t> settimes(N);
+		std::vector<uint32_t> hotsettimes(N);
+		
+		for (size_t i = 0; i < N; ++i)
+		{
+			unorderedsettimes[i] = do_set_test(i, [](size_t N) {return std::unordered_set<int>(N); });
+			hotsettimes[i] = do_set_test(i, [](size_t N) { return hos_set<int, -1>(N); });
+			settimes[i] = do_set_test(i, [](size_t N) { return std::set<int>(); });
+		}
+		//save_timing("set.csv", settimes.begin(), settimes.end());
+		//save_timing("hos_set.csv", hotsettimes.begin(), hotsettimes.end());
+		//save_timing("unordered.csv", unorderedsettimes.begin(), unorderedsettimes.end());
+	}
 	void hotset()
 	{
 		auto dyset = [] {return hod_set<int>{32, -1 }; }; //hotset with runtime tombstone
@@ -114,5 +161,8 @@ namespace sg14_test
 		
 		hotset_each_test(dyset);
 		hotset_each_test(stset);
+
+
+		perf_tests();
 	}
 }
