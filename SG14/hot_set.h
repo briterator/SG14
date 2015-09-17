@@ -18,10 +18,10 @@ struct default_open_addressing_load_algorithm
 	//how many buckets needed to fulfill this many elements
 	size_t allocated(size_t occupied)
 	{
-		if (occupied == 0)
-			return 0;
-		occupied += occupied >> 2;
-		return 1 << int(ceil(log2(occupied)));
+		occupied += occupied;
+		auto l = log2(occupied);
+		auto c = ceil(l);
+		return std::max(16, 1 << int(c));
 	}
 };
 
@@ -29,9 +29,9 @@ struct default_open_addressing_load_algorithm
 template<class It, class Pred>
 It probe_forward(It begin, It start, It end, Pred f)
 {
-	auto It = start;
-	while (true)
+	while (start != end)
 	{
+		auto It = start;
 		do
 		{
 			if (f(*It))
@@ -40,10 +40,10 @@ It probe_forward(It begin, It start, It end, Pred f)
 			}
 			++It;
 		} while (It != end);
-
 		end = start;
-		It = begin;
+		start = begin;
 	}
+	return end;
 }
 
 //like probe_forward but probes the nearest unprobed element
