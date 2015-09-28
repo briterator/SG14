@@ -1,4 +1,4 @@
-LEWG, SG14: D0040R0   
+LEWG, SG14: P0040R0   
 11-9-2015   
 Brent Friedman   
 fourthgeek@gmail.com
