@@ -1,0 +1,52 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Untitled Document.md</title><style></style></head><body id="preview">
+<p>LEWG, SG14: P0039R0<br>
+11-9-2015<br>
+Brent Friedman<br>
+<a href="mailto:fourthgeek@gmail.com">fourthgeek@gmail.com</a></p>
+<h1><a id="Extending_raw_storage_iterator_5"></a>Extending <code>raw_storage_iterator</code></h1>
+<h2><a id="I_Motivation_7"></a>I. Motivation</h2>
+<p>Management of uninitialized memory is an important topic for those implementing containers, allocators, and similar library facilities. This paper seeks to modernize raw storage iterator, bringing important missing features to this utility class.</p>
+<h2><a id="II_Summary_11"></a>II. Summary</h2>
+<h3><a id="Move_construction_13"></a>Move construction</h3>
+<p><code>raw_storage_iterator</code> lacks support for move construction of elements. Currently users will be faced with the surprising behavior of copy construction in all circumstances.</p>
+<blockquote>
+<p><code>*it = std::move(x); //copy constructs using x</code></p>
+</blockquote>
+<h3><a id="Factory_function_19"></a>Factory function</h3>
+<p>raw_storage_iterator requires two template parameters which make its usage fairly verbose. We propose a factory function similar to <code>make_shared</code> for improving readability and making its use less error prone.</p>
+<h3><a id="Placement_new_support_23"></a>Placement new support</h3>
+<p>The primary use of <code>raw_storage_iterator</code> is to serve as a helper for constructing objects in place. Despite this, it does not support placement new syntax. Support for placement new into a <code>raw_storage_iterator</code> makes this iterator useful in new contexts.</p>
+<h2><a id="III_Discussion_27"></a>III. Discussion</h2>
+<p>Comments at Lenexa stated that <code>raw_storage_iterator</code> is obscure and underused. Fixing these holes should at least open room for this class to be utilized more frequently and to exhibit expected behavior.</p>
+<p>No facilities are provided for conditional move, as with move_if_noexcept. The structure of this class would require an understanding of <code>move_if_noexcept</code> to be built-in to the type system and so seems to have no good avenue for pursuit. Users of <code>raw_storage_iterator</code> should use <code>move_if_noexcept</code> at the callsite as they would with any other iterator:<br>
+<code>*it = move_if_noexcept(v);</code></p>
+<h2><a id="IV_Proposed_Text_34"></a>IV. Proposed Text</h2>
+<p>Make the following changes in [storage.iterator]:</p>
+<pre><code>   template&lt;class T&gt;
+   auto make_storage_iterator( T&amp;&amp; iterator)
+   {
+     return raw_storage_iterator&lt;std::remove_reference&lt;T&gt;::type, decltype(*iterator)&gt;( std::forward&lt;T&gt;(iterator));
+   }
+ 
+   template&lt;class T, class U&gt;
+   void* operator new(size_t s, raw_storage_iterator&lt;T,U&gt; it) noexcept
+   {
+     return ::operator new(s, it.base() );
+   }
+ 
+   template&lt;class T, class U&gt;
+   void operator delete ( void* m, raw_storage_iterator&lt;T,U&gt; it) noexcept
+   {
+     return ::operator delete(m, it.base() );
+   }
+</code></pre>
+<p>Add to <code>raw_storage_iterator</code>:</p>
+<pre><code>raw_storage_iterator&amp; operator=(T&amp;&amp; element);
+</code></pre>
+<p><strong>Effects:</strong> Move-constructs a value from element at the location to which the iterator points.<br>
+<strong>Returns:</strong> A reference to the iterator.</p>
+<p>Amend operator=(const T&amp; element) as follows:</p>
+<p><strong>Effects:</strong>
+_Copy-_constructs a value from element …</p>
+
+</body></html>
