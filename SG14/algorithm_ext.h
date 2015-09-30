@@ -80,19 +80,19 @@ namespace stdext
 	template<class BidirIt, class UnaryPredicate>
 	BidirIt unstable_remove_if(BidirIt first, BidirIt last, UnaryPredicate p)
 	{
-		for (;;)
+		for (; ; ++first)
 		{
-			while ((first != last) && p(*first)) {
-				++first;
-			}
-			if (first == last--) break;
-			while ((first != last) && !p(*last)) {
-				--last;
-			}
-			if (first == last) break;
-			*first++ = std::move(*last);
+			for (; first != last && p(*first); ++first);
+			if (first == last)
+				break;
+
+			for (; first != --last && !p(*last); );
+			if (first == last)
+				break;
+
+			*first = std::move(*last);
 		}
-		return first;
+		return (first);
 	}
 	template<class BidirIt, class Val>
 	BidirIt unstable_remove(BidirIt first, BidirIt last, const Val& v)
@@ -118,19 +118,19 @@ namespace stdext
 	template<class BidirIt, class UnaryPredicate>
 	BidirIt partition(BidirIt first, BidirIt last, UnaryPredicate p)
 	{
-		for (;;)
+		for (; ; ++first)
 		{
-			while ((first != last) && p(*first)) {
-				++first;
-			}
-			if (first == last--) break;
-			while ((first != last) && !p(*last)) {
-				--last;
-			}
-			if (first == last) break;
-			std::iter_swap(first++, last);
+			for (; first != last && p(*first); ++first);
+			if (first == last)
+				break;
+
+			for (; first != --last && !p(*last); );
+			if (first == last)
+				break;
+
+			std::iter_swap(first, last);
 		}
-		return first;
+		return (first);
 	}
 
 	//this exists as a point of reference for providing a stable comparison vs unstable_remove_if

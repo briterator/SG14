@@ -43,10 +43,10 @@ struct do_tests
 			auto t1 = std::chrono::high_resolution_clock::now();
 			return (t1 - t0).count();
 		};
-		auto cmp = [](auto& f) {return f[0] & 1; };
+		auto cmp = [](auto& elem) {return elem[0] == 1; };
 		auto partitionfn = [&](auto& f)
 		{
-			stdext::partition(f.begin(), f.end(), cmp);
+			stdext::partition(f.begin(), f.end(), [](auto& elem) {return elem[0] != 1; });
 		};
 		auto unstablefn = [&](auto& f)
 		{
@@ -78,7 +78,7 @@ struct do_tests
 			auto median = [](std::vector<unsigned long>& v)
 			{
 				auto med = (v.begin() + v.size()/ 2) ;
-				std::nth_element(v.begin(), v.begin() + (v.size()/2), v.end());
+				std::nth_element(v.begin(), med, v.end());
 				return *med;
 			};
 
