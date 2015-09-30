@@ -80,7 +80,8 @@ namespace stdext
 	template<class BidirIt, class UnaryPredicate>
 	BidirIt unstable_remove_if(BidirIt first, BidirIt last, UnaryPredicate p)
 	{
-		while (1) {
+		for (;;)
+		{
 			while ((first != last) && p(*first)) {
 				++first;
 			}
@@ -96,7 +97,8 @@ namespace stdext
 	template<class BidirIt, class Val>
 	BidirIt unstable_remove(BidirIt first, BidirIt last, const Val& v)
 	{
-		while (1) {
+		for (;;)
+		{
 			while ((first != last) && (*first == v)) {
 				++first;
 			}
@@ -116,7 +118,8 @@ namespace stdext
 	template<class BidirIt, class UnaryPredicate>
 	BidirIt partition(BidirIt first, BidirIt last, UnaryPredicate p)
 	{
-		while (1) {
+		for (;;)
+		{
 			while ((first != last) && p(*first)) {
 				++first;
 			}
