@@ -131,10 +131,10 @@ namespace stdext
 	auto semistable_partition(FwdIt first, FwdIt last, Pred p)
 	{
 		using namespace std;
-		first = find_if(first, last, p);
+		first = find_if(first, last, [&](auto& a) {return !p(a); });
 		if (first != last)
 			for (auto i = first; ++i != last; )
-				if (!p(*i))
+				if (p(*i))
 					swap(*first++, *i);
 		return first;
 	}

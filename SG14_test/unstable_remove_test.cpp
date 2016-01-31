@@ -15,8 +15,8 @@
 auto not_one = [](auto& elem) {return elem[0] != 1; };
 auto is_one = [](auto& elem) {return elem[0] == 1; };
 
-auto is_even = [](auto& elem) {return (elem & 1) == 0; };
-auto not_even = [](auto& elem) {return elem & 1; };
+auto is_even = [](auto& elem) {return (elem[0] & 1) == 0; };
+auto is_odd = [](auto& elem) {return (elem[0] & 1) == 1;  };
 
 struct timings
 {
@@ -122,11 +122,15 @@ struct do_tests
 
 };
 
-template<class P>
+template<size_t ARRAY_N, class P >
 int64_t iota_test_n(size_t N, P func)
 {
-	std::vector<int> data(N);
-	std::iota(data.begin(), data.end(), 0);
+	std::vector<std::array<int, ARRAY_N>> data(N);
+	int i = 0;
+	for (auto& elem : data)
+	{
+		elem[0] = i++;
+	}
 
 	auto t0 = std::chrono::high_resolution_clock::now();
 	func(data);
@@ -134,15 +138,16 @@ int64_t iota_test_n(size_t N, P func)
 	return (t1 - t0).count();
 }
 
+template<size_t ARRAY_N>
 void iota_test(std::ostream& out)
 {
 
 	auto partitionfn =   [&](auto& f){stdext::partition(f.begin(), f.end(), is_even); };
-	auto unstablefn =    [&](auto& f){stdext::unstable_remove_if(f.begin(), f.end(), not_even); };
-	auto removefn =      [&](auto& f){stdext::remove_if(f.begin(), f.end(), not_even); };
+	auto unstablefn =    [&](auto& f){stdext::unstable_remove_if(f.begin(), f.end(), is_odd); };
+	auto removefn =      [&](auto& f){stdext::remove_if(f.begin(), f.end(), is_odd); };
 	auto semistable_fn = [&](auto& f){stdext::semistable_partition(f.begin(), f.end(), is_even);};
 	auto stablepart_fn = [&](auto& f){std::stable_partition(f.begin(), f.end(), is_even);};
-	out << std::endl << "iota test " << std::endl;
+	out << std::endl << "iota test " << ARRAY_N << std::endl;
 	timings output;
 	for (int i = 0; i < 20000; i += 50)
 	{
@@ -150,11 +155,11 @@ void iota_test(std::ostream& out)
 		measurements.init(i);
 		for (int test_run = 0; test_run < 100; ++test_run)
 		{
-			measurements.unstable_remove.push_back(iota_test_n(i, unstablefn));
-			measurements.remove_if.push_back(iota_test_n(i, removefn));
-			measurements.partition.push_back(iota_test_n(i, partitionfn));
-			measurements.semistable.push_back(iota_test_n(i, semistable_fn));
-			measurements.stable_partition.push_back(iota_test_n(i, stablepart_fn));
+			measurements.unstable_remove.push_back(iota_test_n<ARRAY_N>(i, unstablefn));
+			measurements.remove_if.push_back(iota_test_n<ARRAY_N>(i, removefn));
+			measurements.partition.push_back(iota_test_n<ARRAY_N>(i, partitionfn));
+			measurements.semistable.push_back(iota_test_n<ARRAY_N>(i, semistable_fn));
+			measurements.stable_partition.push_back(iota_test_n<ARRAY_N>(i, stablepart_fn));
 		}
 
 		output.add_median(measurements);
@@ -172,8 +177,9 @@ void sg14_test::unstable_remove_test()
 	//{ do_tests<16> x16;	  }
 	//{ do_tests<32> x32; }
 	//{ do_tests<64> x64;	  }
-	{ auto x128 = do_tests<128>(file_out);  }
+	{ auto x128 = do_tests<32>(file_out);  }
 	//{ do_tests<256> x256; }
 
-	iota_test(file_out);
+	iota_test<1>(file_out);
+	iota_test<32>(file_out);
 }
