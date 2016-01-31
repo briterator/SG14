@@ -1,0 +1,99 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>P0041R2</title><style></style></head><body id="preview">
+<p>LEWG, SG14: P0041R2<br>
+10-01-2016<br>
+Brent Friedman<br>
+<a href="mailto:fourthgeek@gmail.com">fourthgeek@gmail.com</a></p>
+<h1><a id="Unstable_remove_algorithms_5"></a>Unstable remove algorithms</h1>
+<h2><a id="I_Summary_7"></a>I. Summary</h2>
+<p>We compare the proposed family of algorithms "unstable_remove" and "unstable_erase" against existing approaches.These algorithms remove elements from a range without maintaining element order.</p>
+<p>This paper differs from previous drafts by focusing on the argument for supporting these algorithms. LEWG was unconvinced by a previous draft, so the goal is to more clearly articulate the value and receive appropriate feedback as to their interest.</p>
+<h2><a id="II_Motivation_11"></a>II. Motivation</h2>
+<p>We first recognize that remove, partition, and unstable_remove all apply the predicate to each element of the input range. Therefore they all have the same complexity when viewed from the perspective of number of predicate applications.</p>
+<p>The stability requirements of existing remove algorithms do, however, incur costs. The unstable_remove family can perform far fewer moves in many circumstances, doing so at the cost of losing element order.</p>
+<p>The following table summarizes our findings regarding the computational complexity of these algorithms. </p>
+
+<h3>Efficiency Summary</h3>
+<table>
+<tr><td>Algorithm</td><td>stable?</td><td>destructive?</td><td>predicate complexity</td><td>move complexity</td></tr>
+<tr><td>remove</td><td>x</td><td>x</td><td>N</td><td>N</td></tr>
+<tr><td>partition</td><td></td><td></td><td>N</td><td>3N/2 (N/2 swaps)</td></tr>
+<tr><td>unstable_remove</td><td></td><td>x</td><td>N</td><td>N/2</td></tr>
+</table>
+<br><br>
+<table>
+<tr><td>Algorithm</td><td>complexity</td></tr>
+<tr><td>vector::erase</td><td>Num_To_Remove + Num_To_Move</td></tr>
+<tr><td>vector::unstable_erase</td><td>Num_To_Remove + min(Num_To_Move, Num_To_Remove)</td></tr>
+</table>
+
+<h2>III. Algorithms</h2>
+<h3>unstable_remove</h3>
+<p> This algorithm performs a minimum number of move operations required to segregate 'good' values to the front of a range without necessarily maintaining order. This algorithm is only applicable to bidirectional iterators. The basic implementation is to take the bidirectional variant of partition and change it to use move instead of swap.
+</p>
+<p> Example: unstable_remove odd values </p>
+<code>
+{0 1 2 3 4 5 6 7 8 9}<br>
+{<b>0 8</b> 2 3 4 5 6 7 ? 9}<br>
+{<b>0 8 2 6</b> 4 5 ? 7 ? 9}<br>
+{<b>0 8 2 6 4</b> 5 ? 7 ? 9}<br>
+</code> 
+
+<h3>unstable_erase</h3>
+<p>
+vector::erase maintains element order by shifting down elements which occur after the 'hole' that erase creates. For example, if the first element of a 100 element vector is erased, then 99 elements must be moved. unstable_erase avoids this penalty by moving elements from the end of the vector to fill this gap.</p>
+<p>Example: unstable_erase the first two elements:</p>
+<code>
+{0 1 2 3 4 5 6 7 8}<br>
+{7 8 2 3 4 5 6}<br>
+</code>
+
+<p>Possible implementation:</p>
+<pre>
+<code>
+vector::unstable_erase(iterator start, iterator finish)
+{
+ auto new_end  = end() - (finish - start);
+ if (new_end != start)
+ {
+   auto move_count = min(finish-start, end()-finish);
+   move(end()-move_count, end(), start);
+ }
+ erase(new_end, end());
+}
+</code></pre>
+<p>As seen, users can implement this using vector's existing public interface. The following arguments are made for standardization:</p>
+<ul>
+<li>This implementation may be inefficient for some containers like deque</li>
+<li>This technique is non-obvious </li>
+<li>It is not compatible with all container types and so merits special care</li>
+</ul>
+<br>
+Library fundamentals TS adds global functions for erasure. For consistency, it is recommended to extend this to unstable_erase as well.
+<pre><code>
+It unstable_erase_if(Cont&amp; C, Pred p); //unstable_remove_if + erase
+It unstable_erase(Cont&amp; C, const T&amp; value); //unstable_remove + erase
+</code></pre>
+
+<h2>IV. Concerns and Discussion </h2>
+<p>For node-based containers and forward ranges, unstable_erase and unstable_remove are not only of little value, but could be a pessimization. (Semi)contiguous containers like vector and deque are more likely to see strong returns. If nonmember unstable_erase* functions are added, they should fall back to stable variants when suitable. Alternatively, these algorithms could be specified to require bidirectional iterators.</p>
+<p>It is noted that for <code>vector&lt;int&gt; x</code>, and the following code samples,</p>
+<pre><code>/*A*/ x.unstable_erase( unstable_remove( ...), x.end());
+/*B*/ x.erase( unstable_remove(...), x.end());
+</code></pre>
+<p>A provides no efficiency benefits over B. unstable_erase provides benefits primarily when removing elements at the beginning or middle of the container. An unstable_erase of elements from the end of a container degenerates into the same behavior as erase.</p>
+<p>Providing <code>erase</code>, <code>unstable_erase</code>, <code>remove</code>, and <code>unstable_remove</code> features could lead to some confusion among users as to the compatibility and best practices for using them together. In practice they are all interchangeable as needed, but this may require some education.</p>
+<p>It is not believed that unstable_remove_copy and unstable_remove_copy_if would provide any benefits over their existing stable counterparts. As such they are not proposed in this paper.</p>
+<p>Interface changes proposed in the "range" proposals should be applied to these algorithms if both are accepted.</p>
+
+<h3> Applicability</h3>
+<p>Ordered containers can be used in unordered ways. A multicast delegate system might store a vector of callbacks but make no guarantee about the order they are called in. A container which is normally sorted may insert elements, remove elements, and then sort to restore order. As such, it is believed that unstable removal could have broad applicability to many problem spaces, even where order is important.</p>
+<p>D's <a href="http://dlang.org/library/std/algorithm/mutation/remove.html">remove algorithm</a> supports unstable behavior with the same semantics and complexity. D falls back to the behavior of C++'s remove algorithm when bidirectional iterators are not available.</p>
+<p>Unreal Engine's vector replacement, TArray, contains very similar member functions which erase elements without maintaining order: <a href="https://docs.unrealengine.com/latest/INT/API/Runtime/Core/Containers/TArray/RemoveAtSwap/index.html">RemoveAtSwap</a> and <a href="https://docs.unrealengine.com/latest/INT/API/Runtime/Core/Containers/TArray/RemoveSwap/index.html">RemoveSwap</a>.</p>
+
+<p>Some very basic performance tests have been reported in the SG14 reflector:<br>
+<a href="https://groups.google.com/a/isocpp.org/forum/#!topic/sg14/0mwiBYyzz-A">https://groups.google.com/a/isocpp.org/forum/#!topic/sg14/0mwiBYyzz-A</a></p>
+
+<h3>Proof</h3>
+<p> For brevity, a detailed proof of N/2 move complexity is not provided. Instead, we may note that partition is specified as performing at most N/2 swaps for bidirectional iterators. unstable_remove uses the same loop structure, but performs move operations instead. For purposes of this document we consider that sufficient evidence that the algorithm performs at most N/2 moves. A more detailed proof can be provided, but it would basically recapitulate the complexity analysis of partition. </p>
+
+</body></html>

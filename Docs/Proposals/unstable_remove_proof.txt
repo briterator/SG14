@@ -1,0 +1,43 @@
+For the following analyses, let R be range to be processed. Let G denote the set of good elements in R and B denote the set of bad elements in R. By definition, all elements are either good or bad. Therefore,
+<pre>
+Lemma 0: |R| = |G| + |B|.
+</pre>
+The goal of these algorithms is to organize R into good and bad elements, so let Rfront = R[0...|G|) and Rback = R[|G|...). All algorithms seek to place good elements in Rfront, but only partition makes any guarantees about the state of Rback.
+<pre>
+Lemma 1: &forall; e &isin; R, e &isin; Rfront or e &isin; Rback
+Lemma 2: |Rfront| = |G|
+Lemma 3: |Rback| = |B|
+</pre>
+via Lemma 0,
+<pre>
+Lemma 4: Rfront = (Rfront &#x2229 G) &cup; (Rfront &#x2229 B)
+Lemma 5: Rback = (Rback &#x2229 G) &cup; (Rback &#x2229 B)
+</pre>
+via Lemma 0 and 1,
+<pre>
+Lemma 6: G = (Rback &#x2229 G) &cup; (Rfront &#x2229 G)
+Lemma 7: B = (Rback &#x2229 B) &cup; (Rfront &#x2229 B)
+</pre>
+Via all above, we find:
+<pre>
+|G| = |G|
+|Rfront &#x2229 G| + |Rfront &#x2229 B| = |Rback &#x2229 G| + |Rfront &#x2229 G|
+</pre>
+<pre>
+Lemma 8: |Rfront &#x2229 B| = |Rback &#x2229 G|
+</pre>
+We only consider nontrivial cases (where at least one element needs to be moved). When no transformation needs to be done then no moves will be performed. Any range that contains an element to be moved takes the form of a trivial range, followed by a bad element, followed by zero or more elements. For example, removing odd numbers from [0,0,0,1,0,0] consists of a trivial subset [0,0,0] followed by a bad element [1] and additional elements. Paritioning the set [1,0,0,0] by even consists of a trivial subset [], followed by a bad element [1], followed by additional elements. Given that no moves are necessary in trivial cases, we can assume that the input range begins with a bad element with no loss of generality.
+<pre>
+Lemma 9: R[0] &isin; B
+</pre>
+<h3>Remove</h3>
+<p>Via Lemma 9, the input range begins with a bad element. This is in conflict with our goal of tranforming Rfront to contain only good elements. G moves must be made in order to position G elements into Rfront while maintaining order. In the worst case where G is approximately equal to N, then the algorithm requires O(N) moves. This case is demonstrated by the example of removing even elements from the set [0,1,3,5,7,9]. Each odd must be moved down by one spot. We conclude that the move-complexity of remove is N.<p>
+
+<h3>Partition</h3>
+Elements from Rfront &#x2229 G and elements from Rback &#x2229 B may be skipped by the algorithm as they are already in a valid position. We only need to consider Rfront &#x2229 B and Rback &#x2229 G.
+
+In the worst case, |Rfront &#x2229 B| = |Rfront| = |G| and |Rback &#x2229 G| = |Rback| = |B|. IE, in the worst case, Rfront contains only bad elements and Rback contains only good elements. IE, every element is in an incorrect position and needs to be moved.  To move N elements requires at least N moves. In practice, all known implementations* use swap in order to maintain values for Rfront and Rback. Swap moves two elements in three move operations, so the move complexity of these implementations is 3N/2. If an implementation can be made which does not use swap, it is conceivable that a faster implementation could be created. Stable_partition achieves this by relying on O(|R|) additional memory allocation which partition may not use.
+
+<h3>Unstable remove</h3>
+<p>Using the analysis from partition, unstable_remove opts to fill in the 'holes' created by Rfront &#x2229 B using values from Rback &#x2229 G. Therefore the complexity is proportional only to |Rback &#x2229 G|, which Lemma 8 and 0 show to be N/2 in the worst case. Swapping is unnecessary as we do not care about the final state of Rback.</p>
+ 

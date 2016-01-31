@@ -141,18 +141,21 @@ namespace sg14_test
 	void perf_tests()
 	{
 		size_t N = 10000;
-		std::vector<uint32_t> unorderedsettimes(N);
-		std::vector<uint32_t> settimes(N);
-		std::vector<uint32_t> hotsettimes(N);
-		
-		for (size_t i = 0; i < N; ++i)
+		std::vector<uint32_t> unorderedsettimes;
+		std::vector<uint32_t> settimes;
+		std::vector<uint32_t> hossettimes;
+		std::vector<uint32_t> hodsettimes;
+
+		for (size_t i = 0; i < N; i+=10)
 		{
-			unorderedsettimes[i] = do_set_test(i, [](size_t N) {return std::unordered_set<int>(N); });
-			hotsettimes[i] = do_set_test(i, [](size_t N) { return hos_set<int, -1>(N); });
-			settimes[i] = do_set_test(i, [](size_t N) { return std::set<int>(); });
+			unorderedsettimes.push_back( do_set_test(i, [](size_t N) {return std::unordered_set<int>(N); }) );
+			hossettimes.push_back( do_set_test(i, [](size_t N) { return hos_set<int, -1>(N); }) );
+			hodsettimes.push_back( do_set_test(i, [](size_t N) { return hod_set<int>(N, -1); }) );
+			settimes.push_back( do_set_test(i, [](size_t N) { return std::set<int>(); }) );
 		}
 		save_timing("set.csv", settimes.begin(), settimes.end());
-		save_timing("hos_set.csv", hotsettimes.begin(), hotsettimes.end());
+		save_timing("hos_set.csv", hossettimes.begin(), hossettimes.end());
+		save_timing("hod_set.csv", hodsettimes.begin(), hodsettimes.end());
 		save_timing("unordered.csv", unorderedsettimes.begin(), unorderedsettimes.end());
 	}
 	void hotset()

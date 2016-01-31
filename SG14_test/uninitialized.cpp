@@ -86,11 +86,52 @@ namespace
 	}
 }
 
+template<class T, class U>
+void* operator new(size_t s, std::raw_storage_iterator<T, U> it) noexcept
+{
+	return ::operator new(s, it.base());
+}
 
+template<class T, class U>
+void operator delete (void* m, std::raw_storage_iterator<T, U> it) noexcept
+{
+	return ::operator delete(m, it.base());
+}
+
+template<class T>
+auto make_storage_iterator(T&& iterator)
+{
+	return std::raw_storage_iterator<std::remove_reference<T>::type, decltype(*iterator)>(std::forward<T>(iterator));
+}
+template<typename T>
+struct TScopedLambda
+{
+	TScopedLambda(const T& InLambda) : Lambda(InLambda) { }
+
+	~TScopedLambda() { Lambda(); }
+
+private:
+	const T& Lambda;
+};
+
+#define SCOPED_LAMBDA(L) auto ScopedLambda = L; TScopedLambda<decltype(ScopedLambda)> Kaboom(ScopedLambda);
 
 void sg14_test::uninitialized()
 {
-	value();
-	def();
+	//value();
+	//def();
+	auto asdff = [](int, int) {};
+	SCOPED_LAMBDA([&] 
+	{
+		asdff(0 , 0);  
+	});
 
+	uint32_t b= 0xFFFFFFFF;
+	unsigned char a = b;
+	std::aligned_storage_t<16384, 8> foo;
+	std::vector<int>* foo_begin = (std::vector<int>*)&foo;
+	auto it = make_storage_iterator(foo_begin);
+	std::raw_storage_iterator<std::vector<int>*, std::vector<int>> it2(foo_begin + 30);
+	std::generate_n(it, 30, [] {return std::vector<int>{3}; });
+	new(it) std::vector<int>{3};
 }

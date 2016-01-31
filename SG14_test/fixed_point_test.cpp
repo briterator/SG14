@@ -5,126 +5,16 @@
 
 using namespace sg14;
 
-#define ASSERT_EQUAL(A, B) \
-	if ((A) != (B)) { \
-		cout << "Failed: \"" << #A " == " #B << "\", i.e. " << (A) << " != " << (B) << endl; \
-		assert(false); \
-	}
-
-#define ASSERT_TRUE(A) \
-	if (!(A)) { \
-		cout << "Failed: (" << #A << ") where (" #A "==" << (A) << ')' << endl; \
-		assert(false); \
-	}
 
 namespace sg14_test
 {
 	namespace
 	{
-		template <typename FP>
-		constexpr auto magnitude(FP const & x, FP const & y, FP const & z)
-		-> decltype(safe_sqrt(safe_add(safe_square(x), safe_square(y), safe_square(z))))
-		{
-			return safe_sqrt(safe_add(safe_square(x), safe_square(y), safe_square(z)));
-		}
+
 	}
 
 	void fixed_point_test()
 	{
-		using namespace std;
-
-		////////////////////////////////////////////////////////////////////////////////
-		// copy assignment
-
-		// from fixed_point
-		auto rhs = fixed_point<>(123.456);
-		auto lhs = rhs;
-		ASSERT_EQUAL(lhs, fixed_point<>(123.456));
-
-		// from floating-point type
-		lhs = 234.567;
-		ASSERT_EQUAL(static_cast<double>(lhs), 234.56698608398438);
-
-		// from integer
-		lhs = 543;
-		ASSERT_EQUAL(static_cast<int>(lhs), 543);
-
-		// from alternative specialization
-		lhs = fixed_point<uint8_t>(87.65);
-		ASSERT_EQUAL(static_cast<fixed_point<uint8_t>>(lhs), fixed_point<uint8_t>(87.65));
-
-		////////////////////////////////////////////////////////////////////////////////
-		// sin
-
-		ASSERT_EQUAL(static_cast<float>(sin(fixed_point<std::uint8_t, -6>(0))), 0);
-		ASSERT_EQUAL(static_cast<float>(sin(fixed_point<std::int16_t, -13>(3.1415926))), 0);
-		ASSERT_EQUAL(static_cast<double>(sin(fixed_point<std::uint16_t, -14>(3.1415926 / 2))), 1);
-		ASSERT_EQUAL(static_cast<float>(sin(fixed_point<std::int32_t, -24>(3.1415926 * 7. / 2.))), -1);
-		ASSERT_EQUAL(static_cast<float>(sin(fixed_point<std::int32_t, -28>(3.1415926 / 4))), .707106769f);
-		ASSERT_EQUAL(static_cast<double>(sin(fixed_point<std::int16_t, -10>(-3.1415926 / 3))), -.865234375);
-
-		////////////////////////////////////////////////////////////////////////////////
-		// cos
-
-		ASSERT_EQUAL(static_cast<float>(cos(fixed_point<std::uint8_t, -6>(0))), 1);
-		ASSERT_EQUAL(static_cast<float>(cos(fixed_point<std::int16_t, -13>(3.1415926))), -1);
-		ASSERT_EQUAL(static_cast<double>(cos(fixed_point<std::uint16_t, -14>(3.1415926 / 2))), 0);
-		ASSERT_EQUAL(static_cast<float>(cos(fixed_point<std::int32_t, -20>(3.1415926 * 7. / 2.))), 0);
-		ASSERT_EQUAL(static_cast<float>(cos(fixed_point<std::int32_t, -28>(3.1415926 / 4))), .707106829f);
-		ASSERT_EQUAL(static_cast<double>(cos(fixed_point<std::int16_t, -10>(-3.1415926 / 3))), .5);
-
-		////////////////////////////////////////////////////////////////////////////////
-		// Tests of Examples in Proposal 
-
-		// Class Template
-
-		static_assert(fixed_point<uint16_t>::integer_digits == 8, "Incorrect information in proposal section, Class Template");
-		static_assert(fixed_point<uint16_t>::fractional_digits == 8, "Incorrect information in proposal section, Class Template");
-
-		static_assert(static_cast<float>(fixed_point<int32_t, -1>(10.5)) == 10.5, "Incorrect information in proposal section, Class Template");
-
-		static_assert(static_cast<float>(fixed_point<uint8_t, -8>(0)) == 0, "Incorrect information in proposal section, Class Template");
-		static_assert(static_cast<float>(fixed_point<uint8_t, -8>(.999999)) < 1, "Incorrect information in proposal section, Class Template");
-		static_assert(static_cast<float>(fixed_point<uint8_t, -8>(.999999)) > .99, "Incorrect information in proposal section, Class Template");
-		
-		static_assert(fixed_point<>::fractional_digits == _impl::num_bits<int>() / 2, "Incorrect information in proposal section, Class Template");
-
-		// Conversion
-
-		auto conversion_lhs = fixed_point<uint8_t, -4>(.006);
-		auto conversion_rhs = fixed_point<uint8_t, -4>(0);
-		static_assert(is_same<decltype(conversion_lhs), decltype(conversion_rhs)>::value, "Incorrect information in proposal section, Conversion");
-		ASSERT_EQUAL(conversion_lhs, conversion_rhs);
-
-		// Names Constructors
-
-		static_assert(is_same<make_fixed<8, 11, true>, fixed_point<int32_t, -23>>::value, "Incorrect information in proposal section, Named Constructors");
-
-		// Arithmetic Operators
-
-		auto arithmetic_op = make_fixed<4, 3>(15) * make_fixed<4, 3>(15);
-		static_assert(is_same<decltype(arithmetic_op), make_fixed<4, 3>>::value, "Incorrect information in proposal section, Arithmetic Operators");
-		ASSERT_EQUAL(static_cast<int>(arithmetic_op), 1);
-
-		// Type Promotion and Demotion Functions
-		auto type_promotion = promote(fixed_point<int8_t, -2>(15.5));
-		static_assert(is_same<decltype(type_promotion), fixed_point<int16_t, -4>>::value, "Incorrect information in proposal section, Type Promotion and Demotion Functions");
-		ASSERT_EQUAL(static_cast<float>(type_promotion), 15.5);
-
-		// Named Arithmetic Functions
-		auto sq = safe_multiply(fixed_point<uint8_t, -4>(15.9375), fixed_point<uint8_t, -4>(15.9375));
-		ASSERT_EQUAL(static_cast<double>(sq), 254);
-
-		// Overflow and Underflow
-		auto underflow = safe_square(fixed_point<uint8_t, 0>(15));
-		static_assert(is_same<decltype(underflow), fixed_point<uint8_t, 8>>::value, "unexpected type returned by safe_square");
-		ASSERT_TRUE(! underflow);
-
-		// Examples
-		static_assert(static_cast<double>(magnitude(
-			fixed_point<uint16_t, -12>(1),
-			fixed_point<uint16_t, -12>(4),
-			fixed_point<uint16_t, -12>(9))) == 9.890625, "unexpected result from magnitude");
 	}
 }
 

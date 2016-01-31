@@ -1,0 +1,165 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>P0040R2</title><style></style></head><body id="preview">
+<p>LEWG, SG14: P0040R2<br>
+10-1-2016<br>
+Brent Friedman<br>
+<a href="mailto:fourthgeek@gmail.com">fourthgeek@gmail.com</a></p>
+<h1><a id="Extending_memory_management_tools_5"></a>Extending memory management tools</h1>
+<h2><a id="I_Motivation_7"></a>I. Motivation</h2>
+<p>When implementing containers that do not rely on standard allocators it is often necessary to manage memory directly. This paper seeks to fill gaps in the standard library’s memory management utilities.</p>
+<h2><a id="II_Summary_11"></a>II. Summary</h2>
+<p>The function template <code>destroy</code> calls the destructor for specified elements.<br>
+The function template <code>uninitialized_move</code> performs move construction of elements over a range of memory, similar to <code>uninitialized_copy</code>. <code>uninitialized_move_n</code> is also provided.<br>
+The function template <code>uninitialized_value_construct</code> performs value-construction of objects over a range of memory.<br>
+The function template <code>uninitialized_default_construct</code> performs default-construction of objects over a range of memory.</p>
+<h2><a id="III_Discussion_18"></a>III. Discussion</h2>
+<p>Proposed names were approved by LEWG in Kona.</p>
+<p>Discussion is underway with Eric Niebler regarding how these algorithms should interact with range-v3.</p>
+<p><code>destroy</code> first appeared in SGI’s Standard Template Library. It is not known by the author why this algorithm was not inherited into the C++ Standard Library in its initial stages.</p>
+<p>It is not possible to implement the “no effects” policy for <code>destroy</code> or <code>uninitialized_move*</code> so they are specifically excluded from that rule. <code>uninitialized_move</code> does need to destroy elements in the output range if an exception is thrown, but the source range cannot be restored to its original state.</p>
+<p>Some concern is raised about exception handling with respect to <code>uninitialized_move</code>. If a move-constructor throws, moved-from objects may be left in a poorly defined state. Given that algorithm <code>move</code> has no special support for this case, it is believed that throwing constructors for this algorithm can be treated similarly.<br>
+An additional algorithm, <code>uninitialized_move_if_noexcept</code>, could be considered as a resolution to this concern. Such an algorithm was found already implemented in libstdc++. Given that there is currently no range-based <code>move_if_noexcept</code> algorithm, such a solution is not considered here. It is however trivial to implement such an algorithm – simply forwarding to copy or move as appropriate.</p>
+<p>During implementation research, it was found that libstdc++ implements a variation of <code>uninitialized_move</code> by combining <code>move_iterator</code> with <code>uninitialized_copy</code>. This approach has some benefit for purposes of wording as it may alleviate needing to provide careful wording for the exception handling behavior of these algorithms. Both wordings are provided as alternatives. Given that the <code>uninitialized_move</code> algorithms can be reconstructed simply by combining these two features, the author is willing to drop <code>uninitialized_move</code> and <code>uninitialized_move_n</code> from this proposal if their motivation is found insufficient.</p>
+
+<p>A design decision must be made regarding the order of destruction in <code>destroy</code>. Should bidirectional iterators destroy objects in reverse order? We argue no, for the following reasons:
+<ul>
+<li>It would be a very strange API which requires users to provide reverse iterators in order to destroy in forward order</li>
+<li>Reverse-order destruction can be provided by explicitly providing a reverse iterator. Explicitness is the key here.</li>
+<li>The semantics of an algorithm should not change based on the iterator category. This could lead to suprises during code maintenance.</li>
+<li>Leaving the order as implementation-defined will likely damage its usefulness</li>
+</ul>
+<p>It is conceivable that always destroying in forward order would be seen as suprising behavior to some. However, this is at least a consistent behavior which can be accounted for once understood.</p>
+<h2>IV. Survey of Existing Practice</h2>
+<p>The following section describes existing implementations of these algorithms prevalent among major C++ implementations. Empty cells denote where no function corresponding to this proposal was found.</p>
+<p>Implementations denoted with $ rely on an additional allocator object to do construction/destruction</p>
+<table border="1">
+<tr> 
+ <td> P0040 </td>
+ <td><a href="https://www.visualstudio.com/en-us/downloads/download-visual-studio-vs.aspx">Dinkumware</a></td>
+ <td> <a href="https://github.com/gcc-mirror/gcc/blob/7aea4e7cdcd40d7bd47c64e76325a62191887d1b/libstdc%2B%2B-v3/include/bits/stl_uninitialized.h">libstdcxx</a></td>
+ <td><a href="https://github.com/llvm-mirror/libcxx">libcxx</a></td>
+ <td><a href="http://gpl.ea.com/">EASTL</a></td>
+ <td>folly (Facebook)</td>
+ </tr>
+<tr>
+<td> uninitialized_move </td>
+<td> $_Uninitialized_move  </td>
+<td> $__uninitialized_move_a  </td>
+<td></td>
+<td>uninitialized_move</td>
+<td><a href="https://github.com/facebook/folly/blob/26d9f3f3cc34d30f7e73a6f12a3bae5102c7512e/folly/small_vector.h">moveToUninitialized</a></td>
+</tr>
+
+<tr>
+<td> uninitialized_move_n </td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+ </tr>
+<tr> 
+<td> uninitialized_value_construct</td>
+<td>$ _Uninit_def_fill_n (n-variant)</td>
+<td>__uninitialized_default</td>
+<td>$ see vector::__construct_at_end</td> 
+<td>uses uninitialized_fill</td>
+<td>see <a href="https://github.com/facebook/folly/blob/26d9f3f3cc34d30f7e73a6f12a3bae5102c7512e/folly/futures/Barrier.cpp">Barrier::allocateControlBlock</a></td>
+</tr>
+
+<tr> 
+<td> uninitialized_default_construct</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td> 
+</tr>
+<tr> 
+<td> destroy </td> 
+<td>$_Destroy_range</td>
+<td><a href="https://github.com/gcc-mirror/gcc/blob/7aea4e7cdcd40d7bd47c64e76325a62191887d1b/libstdc%2B%2B-v3/include/bits/stl_construct.h">_Destroy</a></td>
+<td>$ see vector::__destruct_at_end</td><td>destruct</td>
+<td>see <A href="https://github.com/facebook/folly/blob/26d9f3f3cc34d30f7e73a6f12a3bae5102c7512e/folly/small_vector.h">~small_vector</a></td>
+</tr>
+</table>
+<p>
+libstdc++ implements uninitialized moves by combining <code>move_iterator</code> with <code>uninitialized_copy</code>. Most implementations use a separate algorithm instead.<br>
+The disparity between default and value initialization is to be expected given that standard library containers consistently prefer value initialization for contained elements.<br>
+EASTL's use of uninitialized_fill to implement uninitialized_value_construct is suboptimal in that it requires constructing an additional object, moving it, and destroying it. <code>uninitialized_value_construct</code> and <code>uninitializeed_default_construct</code> can be used with non-movable types and may avoid unnecessary operations.<br>
+</p>
+<h2><a id="IV_Proposed_Text_31"></a>V. Proposed Text</h2>
+<p>Make the following changes in [specialized.algorithm]:</p>
+<p>Modify: In the algorithm<u>s</u> uninitialized_copy <u>and uninitialized_move</u>, the template parameter InputIterator is required…</p>
+<p>Modify: In the following algorithms <u>other than destroy, uninitialized_move, and uninitialized_move_n</u>, if an exception is thrown there are no effects.</p>
+<p>Add: In the algorithms uninitialized_move and uninitialized_move_n, if an exception is thrown then this function has no effects on the range beginning at result.</p>
+<p>Add:</p>
+<pre><code>        template&lt;class ForwardIterator&gt;
+        void destroy(ForwardIterator begin, ForwardIterator end);
+    
+    Effects:
+        typedef typename iterator_traits&lt;ForwardIterator&gt;::value_type __t;
+        while (begin != end)
+        {
+            begin-&gt;~__t();
+            ++begin;
+        }
+ 
+        
+    template &lt;class InputIterator, class ForwardIterator&gt;
+    ForwardIterator uninitialized_move(InputIterator first, InputIterator last, ForwardIterator result);
+ 
+    Effects:
+        for (; first != last; ++result, ++first)
+            ::new (static_cast&lt;void*&gt;(addressof(*result)))
+                typename iterator_traits&lt;ForwardIterator&gt;::value_type(std::move(*first));
+        return result;
+        
+    template &lt;class InputIterator, class ForwardIterator&gt;
+    ForwardIterator uninitialized_move_n(InputIterator first, size_t count, ForwardIterator result);    
+    
+    Effects:
+        for ( ; count&gt;0; ++result, ++first, --count)
+            ::new (static_cast&lt;void*&gt;(addressof(*result)))
+                typename iterator_traits&lt;ForwardIterator&gt;::value_type(std::move(*first));
+        return result;
+    
+    template&lt;class ForwardIterator&gt;
+    ForwardIterator uninitialized_value_construct(ForwardIterator first, ForwardIterator last);
+    
+    Effects:
+        for (; first != last; ++first)
+            ::new (static_cast&lt;void*&gt;(addressof(*first)))
+                typename iterator_traits&lt;ForwardIterator&gt;::value_type();
+        return first;
+    
+    template&lt;class ForwardIterator&gt;
+    ForwardIterator uninitialized_default_construct(ForwardIterator first, ForwardIterator last);
+    
+    Effects:
+        for (; first != last; ++first)
+            ::new (static_cast&lt;void*&gt;(addressof(*first)))
+                typename iterator_traits&lt;ForwardIterator&gt;::value_type;
+        return first;
+</code></pre>
+
+<h2> Alternative wording</h2>
+<p> An alternative definition and wording for uninitialized_move is provided as a possible wording simplification. By using move_iterator, we no longer have to tiptoe around the wording for exception handling.</p>
+
+<p> Omit the Add: section above which refers to exceptions in uninitialized_move and uninitialized_move_n</p>
+<pre>
+<code>
+    template &lt;class InputIterator, class ForwardIterator&gt;
+    ForwardIterator uninitialized_move(InputIterator first, InputIterator last, ForwardIterator result);
+ 
+    Effects:
+        return uninitialized_copy( make_move_iterator(first), make_move_iterator(last), result);
+        
+    template &lt;class InputIterator, class ForwardIterator&gt;
+    ForwardIterator uninitialized_move_n(InputIterator first, size_t count, ForwardIterator result);    
+    
+    Effects:
+        return uninitialized_copy_n( make_move_iterator(first), count, result);
+    
+</code>
+</pre>
+</body></html>

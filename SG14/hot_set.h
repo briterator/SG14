@@ -25,64 +25,36 @@ struct default_open_addressing_load_algorithm
 	}
 };
 
-//like find_if but has an internal starting point and uses wrap-around
-template<class It, class Pred>
-It probe_forward(It begin, It start, It end, Pred f)
-{
-	while (start != end)
-	{
-		auto It = start;
-		do
-		{
-			if (f(*It))
-			{
-				return It;
-			}
-			++It;
-		} while (It != end);
-		end = start;
-		start = begin;
-	}
-	return end;
-}
-
-//like probe_forward but probes the nearest unprobed element
 template<class It, class Pred>
 It probe_nearest(It begin, It start, It end, Pred op)
 {
-	auto It = start;
-	ptrdiff_t offset = 1;
-	while (It != end && It != begin - 1)
+	if (op(*start))
 	{
-		if (op(*It))
+		return start;
+	}
+	auto ItBack = start + 1;
+	--start;
+	auto fend = begin - 1;
+	while (start != fend || ItBack != end)
+	{
+		if (start != fend)
 		{
-			return It;
+			if (op(*start))
+			{
+				return start;
+			}
+			--start;
 		}
-		It = start + offset;
-		offset *= -1;
-		offset += ptrdiff_t(offset > 0);
+		if (ItBack != end)
+		{
+			if (op(*ItBack))
+			{
+				return ItBack;
+			}
+			++ItBack;
+		}
 	};
 
-	auto inc = It == end ? -1 : -1;
-	It = start + offset;
-
-	if (It == end)
-	{
-		end = begin - 1;
-	}
-	else
-	{
-		assert(It == begin);
-	}
-
-	while (It != end)
-	{
-		if (op(It))
-		{
-			return It;
-		}
-		It += inc;
-	}
 	return end;
 }
 
@@ -90,11 +62,6 @@ It probe_nearest(It begin, It start, It end, Pred op)
 //class wrappers provide easy template deduction
 namespace probe
 {
-	struct forward
-	{
-		template<class... T>  auto operator()(T... s)  const
-		{ return probe_forward(std::forward<T>(s)...); }
-	};
 	struct perfect
 	{
 		template<class It, class Pred> auto operator()(It begin, It start, It end, Pred p) const
@@ -151,7 +118,7 @@ template<
 	class Hash = std::hash<T>,	
 	//load algorithm, must give allocations with power-of-two # of elements
 	class Cap = default_open_addressing_load_algorithm, 
-	class Probe = probe::forward	//determines how elements are probed for collisions
+	class Probe = probe::nearest	//determines how elements are probed for collisions
 >
 class hot_set : public Probe, public Alloc, public Tomb
 {
@@ -177,7 +144,7 @@ class hot_set : public Probe, public Alloc, public Tomb
 			mend = mbegin + size;
 			std::uninitialized_fill(mbegin, mend, tombstone());
 			moccupied = 0;
-			mcapacity = cap.occupancy(mend - mbegin);
+			mcapacity = cap.occupancy(size);
 		}
 	}
 
@@ -193,15 +160,15 @@ class hot_set : public Probe, public Alloc, public Tomb
 	std::pair<T*, bool> find_internal(const U& in) const
 	{
 		auto found = false;
-		auto Invalid = tombstone();
-		auto op = [&found, &in, &Invalid, this](const T& at)
+		auto Eq = eq;
+		auto op = [&found, &in, this, Eq](const T& at)
 		{
-			if (eq(Invalid, at))
+			if (Eq(tombstone(), at))
 			{
 				found = false;
 				return true;
 			}
-			else if (eq(in, at))
+			else if (Eq(in, at))
 			{
 				found = true;
 				return true;
@@ -212,13 +179,12 @@ class hot_set : public Probe, public Alloc, public Tomb
 		auto result_it = Probe::operator()(mbegin, hash_at(in), mend, op);
 		return std::make_pair(result_it, found);
 	}
-
 	template<class U>
 	T* rehash(U&& value)
 	{
 		auto oldbegin = mbegin;
 		auto oldend = mend;
-		auto size = std::max<size_t>(32, (mend-mbegin) << 1);
+		auto size = std::max<size_t>(32, (oldend-oldbegin) << 1);
 		mcapacity = cap.occupancy(size);
 
 		mbegin = allocate(size);
@@ -226,9 +192,10 @@ class hot_set : public Probe, public Alloc, public Tomb
 		std::fill(mbegin, mend, tombstone());
 		auto Invalid = tombstone();
 		auto it = oldbegin;
+		auto Eq = eq;
 		while (it != oldend)
 		{
-			if (!eq(Invalid, *it))
+			if (!Eq(Invalid, *it))
 			{
 				auto h = hash_at(*it);
 				insert_internal(std::move(*it));
@@ -244,17 +211,16 @@ class hot_set : public Probe, public Alloc, public Tomb
 
 	void partial_rehash(T* start)
 	{
-		const auto Invalid = tombstone();
-		auto op = [this, &Invalid](T& at)
+		auto op = [this, tomb{ tombstone() }, Eq{ eq }](T& at)
 		{
-			if (eq(at, Invalid))
+			if (Eq(at, tomb))
 			{
 				return true;
 			}
 			else
 			{
 				auto temp = std::move(at);
-				at = Invalid;
+				at = tomb;
 				auto put = find_internal(temp).first;
 				*put = std::move(temp);
 				return false;
@@ -407,13 +373,13 @@ public:
 		return iterator(result.first, *this);
 	}
 
-	//Removes element, assume that this invalidates all iterators.
+	//Removes element. invalidates all iterators.
 	void erase(iterator value)
 	{
 		remove_internal(value.base());
 	}
 
-	//removes element, assume that this invalidates all iterators.
+	//removes element. invalidates all iterators.
 	bool erase(const T& value)
 	{
 		auto found = find_internal(value);
@@ -543,7 +509,7 @@ template<
 	class Alloc = std::allocator<hot_pair<K,V>>,
 	class Hash = std::hash<K>,
 	class Cap = default_open_addressing_load_algorithm,
-	class Probe = probe::forward
+	class Probe = probe::nearest
 >
 class hot_map : public hot_set<hot_pair<K,V>, Tomb, Eq, Alloc, Hash, Cap, Probe>
 {
@@ -576,7 +542,7 @@ template<
 	class Alloc = std::allocator<hot_pair<K, V>>,
 	class Hash = std::hash<K>,
 	class Cap = default_open_addressing_load_algorithm,
-	class Probe = probe::forward
+	class Probe = probe::nearest
 >
 class hot_multimap : public hot_map<K, V, Tomb, Eq, Alloc, Hash, Cap, Probe>
 {

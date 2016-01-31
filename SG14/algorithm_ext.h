@@ -82,11 +82,11 @@ namespace stdext
 	{
 		for (; ; ++first)
 		{
-			for (; first != last && p(*first); ++first);
+			for (; first != last && !p(*first); ++first);
 			if (first == last)
 				break;
 
-			for (; first != --last && !p(*last); );
+			for (; first != --last && p(*last); );
 			if (first == last)
 				break;
 
@@ -94,30 +94,12 @@ namespace stdext
 		}
 		return (first);
 	}
-	template<class BidirIt, class Val>
-	BidirIt unstable_remove(BidirIt first, BidirIt last, const Val& v)
-	{
-		for (;;)
-		{
-			while ((first != last) && (*first == v)) {
-				++first;
-			}
-			if (first == last--) break;
-			while ((first != last) && !(*last == v)) {
-				--last;
-			}
-			if (first == last) break;
-			*first++ = std::move(*last);
-		}
-		return first;
-	}
-
-
 
 	//this exists as a point of reference for providing a stable comparison vs unstable_remove_if
 	template<class BidirIt, class UnaryPredicate>
 	BidirIt partition(BidirIt first, BidirIt last, UnaryPredicate p)
 	{
+		using namespace std;
 		for (; ; ++first)
 		{
 			for (; first != last && p(*first); ++first);
@@ -128,20 +110,32 @@ namespace stdext
 			if (first == last)
 				break;
 
-			std::iter_swap(first, last);
+			iter_swap(first, last);
 		}
 		return (first);
 	}
 
 	//this exists as a point of reference for providing a stable comparison vs unstable_remove_if
 	template<class ForwardIt, class UnaryPredicate>
-	ForwardIt remove_if(ForwardIt first, ForwardIt last, UnaryPredicate p)
+	auto remove_if(ForwardIt first, ForwardIt last, UnaryPredicate p)
 	{
-		first = std::find_if(first, last, p);
+		using namespace std;
+		first = find_if(first, last, p);
 		if (first != last)
-			for (ForwardIt i = first; ++i != last; )
+			for (auto i = first; ++i != last; )
 				if (!p(*i))
-					*first++ = std::move(*i);
+					*first++ = move(*i);
+		return first;
+	}
+	template<class FwdIt, class Pred>
+	auto semistable_partition(FwdIt first, FwdIt last, Pred p)
+	{
+		using namespace std;
+		first = find_if(first, last, p);
+		if (first != last)
+			for (auto i = first; ++i != last; )
+				if (!p(*i))
+					swap(*first++, *i);
 		return first;
 	}
 }
