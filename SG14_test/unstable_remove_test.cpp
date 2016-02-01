@@ -149,7 +149,7 @@ void iota_test(std::ostream& out)
 	auto stablepart_fn = [&](auto& f){std::stable_partition(f.begin(), f.end(), is_even);};
 	out << std::endl << "iota test " << ARRAY_N << std::endl;
 	timings output;
-	for (int i = 0; i < 20000; i += 50)
+	for (int i = 0; i < 20000; i += 200)
 	{
 		timings measurements;
 		measurements.init(i);
