@@ -39,12 +39,10 @@ namespace sg14_test
 		for (int i = 0; i < 100; ++i)
 		{
 			assert(set.contains(i));
-			assert(set.find(i) != set.end());
 		}
 		for (int i = 101; i < 2000; ++i)
 		{
 			assert(!set.contains(i));
-			assert(set.find(i) == set.end());
 		}
 	}
 
@@ -75,7 +73,8 @@ namespace sg14_test
 
 	void hotmap_each_test()
 	{
-		hod_map<int, const char*> english_text;
+#if 0
+		hov_map<int, const char*> english_text;
 		english_text.insert(5, "five");
 		english_text.insert(33, "thirty three");
 		english_text.insert(6, "six");
@@ -84,10 +83,12 @@ namespace sg14_test
 		english_text.erase(5);
 		assert(english_text.contains(6));
 		assert(english_text.contains(1));
+#endif
 	}
 
 	void hotmultimap_each_test()
 	{
+#if 0
 		auto foo = hod_multimap<int, const char*>( 8,  -1, (const char*)nullptr );
 		foo.insert(3, "3");
 		foo.insert(3, "three");
@@ -100,12 +101,13 @@ namespace sg14_test
 		auto a = "two hundred";
 		foo.insert(200, a);
 		foo.insert(3893, "three eight nine three");
-		assert(foo.find(200, a) != foo.end());
+		assert(foo.find(200, a).second);
 
 		for (auto& elem : foo)
 		{
 			std::cout << elem.key << "=" << elem.value << std::endl;
 		}
+#endif
 	}
 	template<class Generator>
 	auto do_set_test(int i, Generator g)
@@ -114,16 +116,17 @@ namespace sg14_test
 		auto a = g(i);
 		for (int j = 0; j < i; ++j)
 		{
-			a.insert(rand());
+			a.insert(j+j);
 		}
-		auto end = a.end();
+		return (std::chrono::high_resolution_clock::now() - t0).count();
+	}
+	auto do_vec_test(int i)
+	{
+		auto t0 = std::chrono::high_resolution_clock::now();
+		auto a = std::vector<int>(i);
 		for (int j = 0; j < i; ++j)
 		{
-			auto got= a.find(j);
-			if (got != end && *got != j)
-			{
-				__asm int 3;
-			}
+			a.push_back(j+j);
 		}
 		return (std::chrono::high_resolution_clock::now() - t0).count();
 	}
@@ -143,26 +146,29 @@ namespace sg14_test
 		size_t N = 10000;
 		std::vector<uint32_t> unorderedsettimes;
 		std::vector<uint32_t> settimes;
-		std::vector<uint32_t> hossettimes;
-		std::vector<uint32_t> hodsettimes;
-
-		for (size_t i = 0; i < N; i+=10)
+		std::vector<uint32_t> hocsettimes;
+		std::vector<uint32_t> hovsettimes;
+		std::vector<uint32_t> vectimes;
+		for (size_t i = 240; i < N; i+=10)
 		{
 			unorderedsettimes.push_back( do_set_test(i, [](size_t N) {return std::unordered_set<int>(N); }) );
-			hossettimes.push_back( do_set_test(i, [](size_t N) { return hos_set<int, -1>(N); }) );
-			hodsettimes.push_back( do_set_test(i, [](size_t N) { return hod_set<int>(N, -1); }) );
+			hocsettimes.push_back( do_set_test(i, [](size_t N) { return hoc_set<int, -1>(N); }) );
+			hovsettimes.push_back( do_set_test(i, [](size_t N) { return hov_set<int>(N, -1); }) );
 			settimes.push_back( do_set_test(i, [](size_t N) { return std::set<int>(); }) );
+			vectimes.push_back(do_vec_test(i));
 		}
+		save_timing("vec.csv", vectimes.begin(), vectimes.end());
 		save_timing("set.csv", settimes.begin(), settimes.end());
-		save_timing("hos_set.csv", hossettimes.begin(), hossettimes.end());
-		save_timing("hod_set.csv", hodsettimes.begin(), hodsettimes.end());
+		save_timing("hoc_set.csv", hocsettimes.begin(), hocsettimes.end());
+		save_timing("hov_set.csv", hovsettimes.begin(), hovsettimes.end());
 		save_timing("unordered.csv", unorderedsettimes.begin(), unorderedsettimes.end());
 	}
+
 	void hotset()
 	{
-		auto dyset = [] {return hod_set<int>{32, -1 }; }; //hotset with runtime tombstone
-		auto stset = [] {return hos_set<int, -1>{ 64, }; }; //hotset with compile-time tombstone
-		auto z = hod_set<std::string>{ 64 };
+
+		auto dyset = [] {return hov_set<int>{32, -1 }; }; //hotset with runtime tombstone
+		auto stset = [] {return hoc_set<int, -1>{ 64, }; }; //hotset with compile-time tombstone
 
 		hotmap_each_test();
 		hotmultimap_each_test();

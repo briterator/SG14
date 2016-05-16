@@ -20,7 +20,7 @@ Brent Friedman<br>
 </footer>
 </blockquote>
 <h2><a id="I_Motivation_7"></a>I. Motivation</h2>
-<p>It is common for both the standard library and user libraries to manage memory without the use of standard-compliant allocators. They may use internal buffers (like <code>std::optional</code>) or use a completely different allocator model. In industry, it is common for allocators to be responsible for memory allocation, but not responsible for object lifetime <a href="https://github.com/bloomberg/bde/wiki/BDE-Allocator-model">[bde]</a>, <a href="https://www.sgi.com/tech/stl/alloc.html">[sgi]</a>, <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2271.html#eastl_allocator">[eastl]</a>. When implementing such containers it is often necessary to manage memory directly.</p>
+<p>It is common for both the standard library and user libraries to manage memory without the use of standard-compliant allocators. They may use internal buffers (like <code>std::optional</code>) or use an allocator model that does not manage object lifetime <a href="https://github.com/bloomberg/bde/wiki/BDE-Allocator-model">[bde]</a>, <a href="https://www.sgi.com/tech/stl/alloc.html">[sgi]</a>, <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2271.html#eastl_allocator">[eastl]</a>. Such alternative allocator models are <a href="http://www.gamasutra.com/blogs/ThomasYoung/20141002/226898/Custom_Vector_Allocation.php">common</a> in efficiency-critical applications. When implementing such containers it is often necessary to manage memory directly.</p>
 <p>Optimized, exception-correct implementations of these algorithms aren't necessarily obvious. For example, <code>destroy</code> can be optimized into a no-op for trivially destructible types and <code>uninitialized_value_construct</code> can be optimized to memset for integral types. Having a standardized implementation of these features will help the performance and correctness of libraries.</p>
 <h2><a id="II_Summary_11"></a>II. Summary</h2>
 <p>The function templates <code>destroy_at</code>, <code>destroy</code> and <code>destroy_n</code> call the destructor for specified elements.<br>
@@ -333,6 +333,7 @@ ForwardIterator uninitialized_default_construct_n(ForwardIterator first, Size n)
 <p> <b>R3</b></p>
 <ul>
 <li> Added <code>destroy_n</code>, <code>uninitialized_value_construct_n</code>, <code>uninitialized_default_construct_n</code> for symmetry with existing algorithms.</li>
+<li> Tweaks to iterator categories and return values for better correctness </li>
 <li> Added <code>destroy_at</code>, which makes <code>destroy</code> both simpler and safer.</li>
 <li> Refactored [specialized.algorithm] for simpler wording</li>
 <li> Refactored discussions and surveys </li>

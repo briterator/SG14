@@ -9,6 +9,7 @@ namespace sg14_test
 	void fixed_point_test();
 	void plf_test_suite();
 	void hotset();
+	void await_alg_test();
 }
 
 #endif

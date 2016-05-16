@@ -44,7 +44,9 @@ namespace
 	uint64_t lifetest::construct;
 	uint64_t lifetest::destruct;
 	uint64_t lifetest::move;
-
+	std::vector<int> bar() {
+		return{};
+	};
 	void value()
 	{
 		for (auto n = 0; n < 256; ++n)
@@ -58,7 +60,7 @@ namespace
 			free(m);
 			lifetest::reset();
 		}
-
+		auto x = &bar();
 		auto m = (int*)malloc(sizeof(int) * 5);
 		stdext::uninitialized_value_construct(m, m + 5);
 		assert(std::all_of(m, m + 5, [](int x) { return x == 0; }));

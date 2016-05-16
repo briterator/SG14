@@ -1,4 +1,4 @@
- #pragma once
+#pragma once
 #include <utility>
 #include <memory>
 #include <algorithm>
@@ -18,267 +18,217 @@ struct default_open_addressing_load_algorithm
 	//how many buckets needed to fulfill this many elements
 	size_t allocated(size_t occupied)
 	{
+		if (occupied == 0)
+			return 0;
 		occupied += occupied;
 		auto l = log2(occupied);
 		auto c = ceil(l);
-		return std::max(16, 1 << int(c));
+		return size_t(1) << int(c);
+	}
+
+	template<class T>
+	T* select(T* begin, T* end, size_t hash) const
+	{
+		return begin + (hash & ((end - begin) - 1));
+	}
+
+	size_t grow(size_t allocated)
+	{
+		return std::max<size_t>(32, allocated << 1);
 	}
 };
 
-template<class It, class Pred>
-It probe_nearest(It begin, It start, It end, Pred op)
+template<class T>
+struct variable
 {
-	if (op(*start))
-	{
-		return start;
-	}
-	auto ItBack = start + 1;
-	--start;
-	auto fend = begin - 1;
-	while (start != fend || ItBack != end)
-	{
-		if (start != fend)
-		{
-			if (op(*start))
-			{
-				return start;
-			}
-			--start;
-		}
-		if (ItBack != end)
-		{
-			if (op(*ItBack))
-			{
-				return ItBack;
-			}
-			++ItBack;
-		}
-	};
+	T value;
+	variable()
+		:value()
+	{}
+	variable(const T& value_)
+		:value(value_)
+	{}
+	variable(T&& value_)
+		:value(std::move(value_))
+	{}
 
-	return end;
-}
-
-//probing algorithms
-//class wrappers provide easy template deduction
-namespace probe
-{
-	struct perfect
+	const T& operator()() const
 	{
-		template<class It, class Pred> auto operator()(It begin, It start, It end, Pred p) const
-		{
-			p(*start);
-			return start;
-		}
-	};
-	struct nearest
-	{
-		template<class... T> auto operator()(T... s) const
-		{
-			return probe_nearest(std::forward<T>(s)...);
-		}
-	};
-}
-
-
-// generator functions
-template<class T, T key>
-struct static_value
-{
-	T operator()() const
-	{
-		return key;
+		return value;
 	}
 };
 
-template<class K>
-struct dynamic_value
+template<class T>
+struct span
 {
-	K key;
-	dynamic_value()
-		:key()
-	{}
-	dynamic_value(const K& k)
-		:key(k)
-	{}
-	dynamic_value(K&& k)
-		:key(std::move(k))
-	{}
+	T* first;
+	T* last;
 
-	K operator()() const
-	{
-		return key;
-	}
+	T* begin() { return first;  }
+	T* end() { return last;  }
 };
 
 template<
 	class T,					//contained type
 	class Tomb,					//tombstone generator function
-	class Eq = std::equal_to<void>,//element comparator
+	class Equal = std::equal_to<void>,//element comparator
 	class Alloc = std::allocator<T>,
-	class Hash = std::hash<T>,	
-	//load algorithm, must give allocations with power-of-two # of elements
-	class Cap = default_open_addressing_load_algorithm, 
-	class Probe = probe::nearest	//determines how elements are probed for collisions
+	class Hash = std::hash<T>,		
+	class Load = default_open_addressing_load_algorithm//load algorithm
 >
-class hot_set : public Probe, public Alloc, public Tomb
+class hot_set
 {
 	T* mbegin;
 	T* mend;
 	size_t mcapacity;
 	size_t moccupied;
 	Hash hash;
-	Cap cap;
-	Eq eq;
+	Load load_alg;
+	Equal eq;
+	Tomb tomb_gen;
+	Alloc allocator;
 
-
-	T* hash_at(const T& Item) const
-	{
-		return mbegin + (hash(Item) & ((mend-mbegin) - 1));
-	}
 	void init(size_t size)
 	{
 		if (size > 0)
 		{
 			//assert(powerOfTwo(size));
-			mbegin = allocate(size);
+			mbegin = allocator.allocate(size);
 			mend = mbegin + size;
-			std::uninitialized_fill(mbegin, mend, tombstone());
+			std::uninitialized_fill(mbegin, mend, tomb_gen());
 			moccupied = 0;
-			mcapacity = cap.occupancy(size);
+			mcapacity = load_alg.occupancy(size);
 		}
 	}
 
-	template<class U>
-	std::pair<T*, bool> insert_internal(U&& item)
-	{
-		auto Found = find_internal(item);
-		*Found.first = std::forward<U>(item);
-		return Found;
-	}
-
-	template<class U>
-	std::pair<T*, bool> find_internal(const U& in) const
-	{
-		auto found = false;
-		auto Eq = eq;
-		auto op = [&found, &in, this, Eq](const T& at)
-		{
-			if (Eq(tombstone(), at))
-			{
-				found = false;
-				return true;
-			}
-			else if (Eq(in, at))
-			{
-				found = true;
-				return true;
-			}
-			return false;
-		};
-
-		auto result_it = Probe::operator()(mbegin, hash_at(in), mend, op);
-		return std::make_pair(result_it, found);
-	}
-	template<class U>
-	T* rehash(U&& value)
+	void rehash(size_t newsize)
 	{
 		auto oldbegin = mbegin;
 		auto oldend = mend;
-		auto size = std::max<size_t>(32, (oldend-oldbegin) << 1);
-		mcapacity = cap.occupancy(size);
+		mcapacity = load_alg.occupancy(newsize);
 
-		mbegin = allocate(size);
-		mend = mbegin + size;
-		std::fill(mbegin, mend, tombstone());
-		auto Invalid = tombstone();
+		auto tomb = tombstone();
+		auto b = allocator.allocate(newsize);
+		auto e = b + newsize;
+		std::uninitialized_fill(b, e, tomb);
 		auto it = oldbegin;
-		auto Eq = eq;
+		auto equal = eq;
 		while (it != oldend)
 		{
-			if (!Eq(Invalid, *it))
+			auto& value = *it;
+			if (!equal(tomb, value))
 			{
-				auto h = hash_at(*it);
-				insert_internal(std::move(*it));
+				*find_internal(b, e, value).first = std::move(value);
 			}
 			++it;
 		}
-		deallocate(oldbegin, oldend-oldbegin);
-		++moccupied;
-		auto h = hash_at(value);
-		return insert_internal(std::forward<U>(value)).first;
-		
+		mbegin = b;
+		mend = e;
+		allocator.deallocate(oldbegin, oldend-oldbegin);		
 	}
 
-	void partial_rehash(T* start)
+	void partial_rehash(T* first, T* pos, T* last)
 	{
-		auto op = [this, tomb{ tombstone() }, Eq{ eq }](T& at)
+		auto tomb = tomb_gen();
+		auto current = pos;
+		for (int i = 0; i < 2; ++i)
 		{
-			if (Eq(at, tomb))
+			while (current != last)
 			{
-				return true;
-			}
-			else
-			{
-				auto temp = std::move(at);
-				at = tomb;
-				auto put = find_internal(temp).first;
-				*put = std::move(temp);
-				return false;
-			}
-		};
-		if (start == mend)
-			start = mbegin;
-		Probe::operator()(mbegin, start, mend, op);
+				auto& value = *current;
+				if (eq(value, tomb))
+				{
+					return;
+				}
+				else
+				{
+					auto temp = std::move(value);
+					value = tomb;
+					*find_internal(mbegin, mend, temp).first = std::move(temp);
+				}
+				++current;
+			};
+			current = first;
+			last = pos;
+		}
 	}
-	void remove_internal(T* found)
+	void remove_internal(T* first_, T* element_, T* last_)
 	{
 		--moccupied;
-		*found = tombstone();
-		partial_rehash(found + 1);
+		*element_ = tomb_gen();
+		partial_rehash(first_, element_, last_);
 	}
+	auto find_internal(T* first_, T* last_, const T& in_) const
+	{
+		auto start = load_alg.select(first_, last_, hash(in_));
+		auto equal = eq;
+		auto tomb = tomb_gen();
+		auto current = start;
+		for (int i = 0; i < 2; ++i)
+		{
+			while (current != last_)
+			{
+				auto& value = *current;
+				if (equal(tomb, value))
+				{
+					return std::make_pair(current, false);
+				}
+				else if (equal(in_, value))
+				{
+					return std::make_pair(current, true);
+				}
+				++current;
+			};
+			last_ = start;
+			current = first_;
+		};
 
+		return std::make_pair(last_, false);
+	}
 public:
-	// this is poorly implemented due to restrictions on range-for loops.
-	// efficiency can be improved notably when range-v3 enables heterogeneous iterators
-	struct iterator : std::iterator< std::bidirectional_iterator_tag, T>
+	struct iterator : std::iterator< std::forward_iterator_tag, T>
 	{
 		const hot_set& set;
-		T* pos;
-		T* end;
-
-		iterator(T* at, const hot_set& inh)
-			:pos(at), set(inh), end(inh.mend)
+		T* current;
+		iterator(const iterator&) = default;
+		iterator(iterator&&) = default;
+		iterator(T* current_, const hot_set& set_)
+			:current(current_), set(set_)
 		{
+			advance();
 		}
 
 		const T& operator*() const
 		{
-			return *pos;
+			return *current;
+		}
+		void advance()
+		{
+			current = std::find_if(current, set.mend, [&](T& elem) { return !set.is_invalid(elem); });
+		}
+		iterator operator++(int)
+		{
+			iterator r(*this);
+			++r;
+			return r;
 		}
 		iterator& operator++()
 		{
-			pos = std::find_if(pos + 1, end, [&](T& elem) { return !set.is_invalid(elem); });
+			++current;
+			advance();
 			return *this;
 		}
 		bool operator!=(iterator other) const
 		{
-			return other.pos != pos;
+			return current != other.current;
 		}
 		bool operator==(iterator other) const
 		{
-			return other.pos == pos;
-		}
-		bool operator!=(T* other) const
-		{
-			return other != pos;
-		}
-		bool operator==(T* other) const
-		{
-			return other == pos;
+			return current == other.current;
 		}
 		const T* base() const
 		{
-			return pos;
+			return current;
 		}
 	};
 
@@ -290,27 +240,25 @@ public:
 	{}
 
 	hot_set(const hot_set& in)
-		: Probe(in)
-		, Alloc(in)
-		, Tomb(in)
+		: allocator(in.allocator)
+		, tomb_gen(in.tomb_gen)
 		, mcapacity(in.mcapacity)
 		, moccupied(in.moccupied)
 		, hash(in.hash)
-		, cap(in.cap)
+		, load_alg(in.load_alg)
 		, eq(in.eq)
 	{
 		auto size = in.reserved();
-		mbegin = allocate(size);
+		mbegin = allocator.allocate(size);
 		mend = mbegin + size;
-		std::copy(in.mbegin, in.mend, mbegin);
+		std::uninitialized_copy(in.mbegin, in.mend, mbegin);
 	}
 
 	hot_set(hot_set&& in)
-		:mbegin(in.mbegin)
+		: mbegin(in.mbegin)
 		, mend(in.mend)
 		, mcapacity(in.mcapacity)
 		, moccupied(in.moccupied)
-		, Probe(std::move(in))
 		, Alloc(std::move(in))
 		, hash(std::move(in.hash))
 		, cap(std::move(in.cap))
@@ -322,23 +270,33 @@ public:
 		in.mend = nullptr;
 	}
 
-	hot_set(size_t init_capacity, Tomb itomb = Tomb(),  Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
-		: Probe(p)
-		, hash(h)
-		, cap(c)
-		, Alloc(alloc)
-		, Tomb(itomb)
+	hot_set(size_t capacity_, Tomb tombstone_ = Tomb(), Hash hash_ = Hash(), Equal equal_ = Equal(), Load load_ = Load(), Alloc alloc_ = Alloc())
+		: hash(std::move(hash_))
+		, load_alg(std::move(load_))
+		, eq(std::move(equal_))
+		, allocator(std::move(alloc_))
+		, tomb_gen(std::move(tombstone_))
 		, moccupied(0)
 		, mcapacity(0)
 		, mbegin(nullptr)
 		, mend(nullptr)
 	{
-		init(cap.allocated(init_capacity));
+		init(load_alg.allocated(capacity_));
 	}
 
-	bool is_invalid(const T& t) const
+	hot_set& operator=(const hot_set& other_)
 	{
-		return eq(tombstone(), t);
+		~hot_set();
+		return *new(this) hot_set(other_);
+	}
+	hot_set& operator=(hot_set&& other_)
+	{
+		~hot_set();
+		return *new(this) hot_set(std::move(other_));
+	}
+	bool is_invalid(const T& value_) const
+	{
+		return eq(tombstone(), value_);
 	}
 
 	//number of elements allocated by the set
@@ -359,40 +317,64 @@ public:
 		return moccupied;
 	}
 
+	span<T> raw_view()
+	{
+		return{ mbegin, mend };
+	}
+
+	void shrink()
+	{
+		auto target_size = load_alg.allocated(mcapacity);
+		if (target_size != (mend - mbegin) )
+		{
+			rehash(target_size);
+		}
+	}
+
 	//Inserts an element into the set
 	//If size() == capacity(), invalidates any iterators
 	template<class U>
-	iterator insert(U&& value)
+	auto insert(U&& value_)
 	{
-		if (mcapacity == moccupied)
+		if (mcapacity != moccupied) {}else
 		{
-			return iterator(rehash(std::forward<U>(value)), *this);
+			rehash(load_alg.grow(mend - mbegin));
 		}
-		auto result = insert_internal(std::forward<U>(value));
+		return stable_insert(std::forward<U>(value_));
+	}
+
+	//Inserts an element into the set
+	//precondition: size < capacity
+	//invalidates no iterators
+	template<class U>
+	auto stable_insert(U&& value_)
+	{
+		auto result = find_internal(mbegin, mend, value_);
+		*result.first = std::forward<U>(value_);
 		moccupied += uint32_t(result.second == false);
-		return iterator(result.first, *this);
+		return result;
 	}
-
-	//Removes element. invalidates all iterators.
-	void erase(iterator value)
-	{
-		remove_internal(value.base());
-	}
-
 	//removes element. invalidates all iterators.
-	bool erase(const T& value)
+	void erase(const T* element_)
 	{
-		auto found = find_internal(value);
+		remove_internal(mbegin, element_, mend);
+	}
+	//removes element == value. invalidates all iterators.
+	bool erase(const T& value_)
+	{
+		auto b = mbegin;
+		auto e = mend;
+		auto found = find_internal(b, e, value_);
 		if (found.second)
 		{
-			remove_internal(found.first);
+			remove_internal(b, found.first, e);
 			return true;
 		}
 		return false;
 	}
-	T tombstone() const
+	decltype(auto) tombstone() const
 	{
-		return Tomb::operator()();
+		return tomb_gen();
 	}
 
 	bool empty() const
@@ -407,60 +389,40 @@ public:
 		moccupied = 0;
 	}
 
-	template<class U>
-	iterator find(const U& value) const
+	auto find(const T& value_) const
 	{
-		auto result = find_internal(value);
-		return iterator(result.second ? result.first : mend, *this);
+		return find_internal(mbegin, mend, value_);
 	}
 
-	template<class U>
-	bool contains(const U& value) const
+	bool contains(const T& value_) const
 	{
-		return find_internal(value).second;
+		return find_internal(mbegin, mend, value_).second;
 	}
 
-	iterator begin() const
+	auto begin() const
 	{
-		auto result = iterator(mbegin-1, *this);
-		++result;
-		return result;
+		return iterator(mbegin, *this);
 	}
 
-	iterator end() const
+	auto end() const
 	{
 		return iterator(mend, *this);
 	}
 
-	//could be useful for iterating elements more efficiently. User must manually skip tombstones.
-	//array_view<T> unsafe_view(){ return {mbegin, mend}; }
-
 	~hot_set()
 	{
 		stdext::destroy(mbegin, mend);
-		Alloc::deallocate(mbegin, mend-mbegin);
+		allocator.deallocate(mbegin, mend-mbegin);
 	}
-
-
 };
-
+template<class T> using hov_set = hot_set< T, variable<T> >;
+template<class T, T tombstone> using hoc_set = hot_set< T, std::integral_constant<T, tombstone> >;
+#if 0
 template<class K, class V>
 struct hot_pair
 {
 	K key;
 	V value;
-	constexpr hot_pair()
-		:key(), value()
-	{}
-
-	constexpr hot_pair(const K& k)
-		:key(k)
-		,value()
-	{}
-	template<class KK, class VV>
-	constexpr hot_pair(KK&& k, VV&& v)
-		: key(std::forward<KK>(k)), value(std::forward<VV>(v))
-	{}
 
 	operator const K&() const
 	{
@@ -495,10 +457,6 @@ namespace std
 }
 
 
-
-template<class T> using hod_set = hot_set< T, dynamic_value<T> >;
-template<class T, T tombstone> using hos_set = hot_set< T, static_value<T, tombstone> >;
-
 //Map implementation, unique keys
 //The user provides a key which shall never be inserted
 
@@ -508,29 +466,28 @@ template<
 	class Eq = std::equal_to<void>,
 	class Alloc = std::allocator<hot_pair<K,V>>,
 	class Hash = std::hash<K>,
-	class Cap = default_open_addressing_load_algorithm,
-	class Probe = probe::nearest
+	class Cap = default_open_addressing_load_algorithm
 >
-class hot_map : public hot_set<hot_pair<K,V>, Tomb, Eq, Alloc, Hash, Cap, Probe>
+class hot_map
 {
-	typedef hot_set<hot_pair<K, V>, Tomb, Eq, Alloc, Hash, Cap, Probe> Super;
+	hot_set<hot_pair<K, V>, Tomb, Eq, Alloc, Hash, Cap> data;
 public:
 	hot_map() = default;
 	hot_map(hot_map&&) = default;
 	hot_map(const hot_map&) = default;
-	hot_map(size_t init_capacity, K tombstone_key, V tombstone_value,  Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
-		: Super(init_capacity, hot_pair<K,V>(std::move(tombstone_key), std::move(tombstone_value)),  p, h, c, alloc)
+	hot_map(size_t init_capacity, K tombstone_key, V tombstone_value,  Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+		: Super(init_capacity, hot_pair<K,V>(std::move(tombstone_key), std::move(tombstone_value)),  h, c, alloc)
 	{}
 
 	template<class KK, class VV>
-	iterator insert(KK&& key, VV&& value)
+	auto insert(KK&& key, VV&& value)
 	{
-		return Super::insert(hot_pair<K, V>{std::forward<KK>(key), std::forward<VV>(value)});
+		return data.insert(hot_pair<K, V>{std::forward<KK>(key), std::forward<VV>(value)});
 	}
 };
 
-template<class K, class V> using hod_map = hot_map<K, V, dynamic_value<K> , hot_pair_by_key<K,V>>;
-template<class K, K tombstone, class V> using hos_map = hot_map< K, V, static_value<K, tombstone>, hot_pair_by_key<K,V>>;
+template<class K, class V> using hov_map = hot_map<K, V, variable<K> , hot_pair_by_key<K,V>>;
+template<class K, K tombstone, class V> using hoc_map = hot_map< K, V, std::integral_constant<K, tombstone>, hot_pair_by_key<K,V>>;
 
 
 //Map implementation, duplicate keys allowed
@@ -541,27 +498,27 @@ template<
 	class Eq = std::equal_to<void>,
 	class Alloc = std::allocator<hot_pair<K, V>>,
 	class Hash = std::hash<K>,
-	class Cap = default_open_addressing_load_algorithm,
-	class Probe = probe::nearest
+	class Cap = default_open_addressing_load_algorithm
 >
-class hot_multimap : public hot_map<K, V, Tomb, Eq, Alloc, Hash, Cap, Probe>
+class hot_multimap : public hot_map<K, V, Tomb, Eq, Alloc, Hash, Cap>
 {
-	typedef hot_map<K, V, Tomb, Eq, Alloc, Hash, Cap, Probe> Super;
+	typedef hot_map<K, V, Tomb, Eq, Alloc, Hash, Cap> Super;
 public:
 	hot_multimap() = default;
 	hot_multimap(hot_multimap&&) = default;
 	hot_multimap(const hot_multimap&) = default;
 
-	hot_multimap(size_t init_capacity, K tombstone_key, V tombstone_value, Probe p = Probe(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
-		: Super(init_capacity, std::move(tombstone_key), std::move(tombstone_value), p, h, c, alloc)
+	hot_multimap(size_t init_capacity, K tombstone_key, V tombstone_value=V(), Hash h = Hash(), Cap c = Cap(), Alloc alloc = Alloc())
+		: Super(init_capacity, std::move(tombstone_key), std::move(tombstone_value), h, c, alloc)
 	{}
 
 	template<class KK, class VV>
-	iterator find(KK&& key, VV&& val) const
+	auto find(KK&& key, VV&& val) const
 	{
 		return Super::find(hot_pair<K, V>{std::forward<KK>(key), std::forward<VV>(val)});
 	}
 };
 
 
-template<class K, class V> using hod_multimap = hot_multimap<K, V, dynamic_value<hot_pair<K, V>> >;
+template<class K, class V> using hod_multimap = hot_multimap<K, V, variable<hot_pair<K, V>> >;
+#endif

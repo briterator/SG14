@@ -1,4 +1,4 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>P0040R2</title>
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>P0040R3</title>
 <style>
 ins{ color:rgb(0,128,0);}
 .strike{ color:red; text-decoration: line-through; }
@@ -8,8 +8,8 @@ del{color:red;}
 </style>
 
 </head><body id="preview">
-<p>LEWG, SG14: P0040R2<br>
-2016-02-27<br>
+<p>LEWG, SG14: P0040R3<br>
+2016-05-1<br>
 Brent Friedman<br>
 <a href="mailto:fourthgeek@gmail.com">fourthgeek@gmail.com</a></p>
 <h1><a id="Extending_memory_management_tools_5"></a>Extending memory management tools</h1>
@@ -20,7 +20,7 @@ Brent Friedman<br>
 </footer>
 </blockquote>
 <h2><a id="I_Motivation_7"></a>I. Motivation</h2>
-<p>It is common for both the standard library and user libraries to manage memory without the use of standard-compliant allocators. They may use internal buffers (like <code>std::optional</code>) or use a completely different allocator model. In industry, it is common for allocators to be responsible for memory allocation, but not responsible for object lifetime <a href="https://github.com/bloomberg/bde/wiki/BDE-Allocator-model">[bde]</a>, <a href="https://www.sgi.com/tech/stl/alloc.html">[sgi]</a>, <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2271.html#eastl_allocator">[eastl]</a>. When implementing such containers it is often necessary to manage memory directly.</p>
+<p>It is common for both the standard library and user libraries to manage memory without the use of standard-compliant allocators. They may use internal buffers (like <code>std::optional</code>) or use an allocator model that does not manage object lifetime <a href="https://github.com/bloomberg/bde/wiki/BDE-Allocator-model">[bde]</a>, <a href="https://www.sgi.com/tech/stl/alloc.html">[sgi]</a>, <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2271.html#eastl_allocator">[eastl]</a> <a href="http://bitsquid.blogspot.fr/2010/09/custom-memory-allocation-in-c.html">[bitsquid]</a>. Such alternative allocator models are <a href="http://www.gamasutra.com/blogs/ThomasYoung/20141002/226898/Custom_Vector_Allocation.php">common</a> in efficiency-critical applications. When implementing such containers it is often necessary to manage memory directly.</p>
 <p>Optimized, exception-correct implementations of these algorithms aren't necessarily obvious. For example, <code>destroy</code> can be optimized into a no-op for trivially destructible types and <code>uninitialized_value_construct</code> can be optimized to memset for integral types. Having a standardized implementation of these features will help the performance and correctness of libraries.</p>
 <h2><a id="II_Summary_11"></a>II. Summary</h2>
 <p>The function templates <code>destroy_at</code>, <code>destroy</code> and <code>destroy_n</code> call the destructor for specified elements.<br>
@@ -71,7 +71,7 @@ Many standard library implementations already contain our algorithms, except in 
 With appropriate reslolution of <a href="http://cplusplus.github.io/LWG/lwg-active.html#2598">LWG 2598</a>, the expression <code>addressof(*first)</code> will produce an error if <code>*first</code> produces an rvalue.</p>
 <p>The specification of <code>destroy_at</code> may seem odd and restrictive in how it requires a non-null pointer rather than a reference or arbitrary iterator type. This design is chosen for the following reasons:</p>
 <ul>
-<li>It matches existing practice in various libraries (see below)</li>
+<li>It matches existing practice in various libraries (see table)</li>
 <li>It is conceptually compatible with <code>allocator::destroy</code> which operates on the allocator's pointer type</li>
 <li>By requiring a pointer, the API makes it difficult to call on a temporary object. If the algorithm operated on a reference or iterator, we would need to do extra work to exclude <code>const T&&</code>s</li>
 <li><code>destroy</code> inherits the benefit of rvalue safety when implemented as a loop calling <code>destroy_at</code></li>
@@ -165,10 +165,15 @@ template&lt;class ForwardIterator&gt;
 <p>
 </p>
 <p>
+<del>In the algorithm uninitialized_copy, the template parameter InputIterator is required to satisfy the
+requirements of an input iterator (24.2.3). In all of the following algorithms, the template parameter
+ForwardIterator is required to satisfy the requirements of a forward iterator (24.2.5), and is required
+to have the property that no exceptions are thrown from increment, assignment, comparison, or indirection
+through valid iterators.</del><br>
 <ins>Throughout this Clause, the names of template parameters are used to express type requirements.</ins>
 <ul>
- <li> <del>In the algorithm uninitialized_copy</del><ins>If an algorithm's template parameter is named InputIterator,</ins> the template argument shall satisfy the requirements of an input iterator (24.2.3).</li>
- <li> <del>In all of the following algorithms, the template parameter ForwardIterator is required to </del><ins>If an algorithm's template parameter is named ForwardIterator</ins>, the template argument shall satisfy the requirements of a forward iterator (24.2.5), and is required to have the property that no exceptions are thrown from increment, assignment, comparison, or indirection through valid iterators.</li>
+ <li> <ins>If an algorithm's template parameter is named InputIterator, the template argument shall satisfy the requirements of an input iterator (24.2.3).</ins></li>
+ <li> <ins>If an algorithm's template parameter is named ForwardIterator, the template argument shall satisfy the requirements of a forward iterator (24.2.5), and is required to have the property that no exceptions are thrown from increment, assignment, comparison, or indirection through valid iterators.</ins></li>
 </ul>
 <del>In the following algorithms, if an exception is thrown there are no effects.</del>
 </p>
@@ -329,10 +334,11 @@ ForwardIterator uninitialized_default_construct_n(ForwardIterator first, Size n)
     <i>Remarks:</i> If an exception is thrown there are no effects.
 </pre>
 </ins>
-<h2> VI. Revision history</h2>
+<h2> V. Revision history</h2>
 <p> <b>R3</b></p>
 <ul>
 <li> Added <code>destroy_n</code>, <code>uninitialized_value_construct_n</code>, <code>uninitialized_default_construct_n</code> for symmetry with existing algorithms.</li>
+<li> Tweaks to iterator categories and return values for better correctness </li>
 <li> Added <code>destroy_at</code>, which makes <code>destroy</code> both simpler and safer.</li>
 <li> Refactored [specialized.algorithm] for simpler wording</li>
 <li> Refactored discussions and surveys </li>
@@ -359,6 +365,6 @@ ForwardIterator uninitialized_default_construct_n(ForwardIterator first, Size n)
 </ul>
 <p> <b>R0</b></p>
 <ul> <li> Initial revision </li></ul>
-<h2>V. Credits</h2>
+<h2>VI. Credits</h2>
 <p>Special thanks is given to Billy Baker and Patrice Roy for feedback and championship. Thanks to Michael Wong for helping to organize this effort. Thanks to Howard Hinnant for feedback regarding <code>uninitialized_move</code>.</p>
 </body></html>
