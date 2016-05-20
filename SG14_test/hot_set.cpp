@@ -9,6 +9,28 @@
 #include <fstream>
 namespace sg14_test
 {
+	//this class serves to compare the cost of push_back vs. set insertion
+	//the theory is that inserting into a set is unlikely to ever be faster than push_back
+	template<class T>
+	struct vector_set_adapter
+	{
+		std::vector<T> data;
+		vector_set_adapter(size_t N)
+			:data(N)
+		{
+		}
+		vector_set_adapter(const vector_set_adapter&) = default;
+		vector_set_adapter(vector_set_adapter&&) = default;
+		void insert(T i)
+		{
+			data.push_back(i);
+		}
+		void erase(T i)
+		{
+			data.pop_back();
+		}
+	};
+
 	template<class T>
 	void hotset_test_1(T set)
 	{
@@ -63,12 +85,14 @@ namespace sg14_test
 			assert(set.contains(elem));
 		}
 	}
+
 	template<class T>
 	void hotset_each_test(T func)
 	{
 		hotset_test_1(func());
 		hotset_test_2(func());
 		hotset_test_3(func());
+
 	}
 
 	void hotmap_each_test()
@@ -109,39 +133,105 @@ namespace sg14_test
 		}
 #endif
 	}
-	template<class Generator>
-	auto do_set_test(int i, Generator g)
+	
+	template<class Predicate>
+	auto time_median(Predicate p)
 	{
-		auto t0 = std::chrono::high_resolution_clock::now();
-		auto a = g(i);
-		for (int j = 0; j < i; ++j)
+		std::vector<uint64_t> measured;
+		for (int test = 0; test < 10; ++test)
 		{
-			a.insert(j+j);
+			auto t0 = std::chrono::high_resolution_clock::now();
+			p();
+			measured.push_back((std::chrono::high_resolution_clock::now() - t0).count());
 		}
-		return (std::chrono::high_resolution_clock::now() - t0).count();
+		auto median = measured.begin() + 4;
+		std::nth_element(measured.begin(), median, measured.end());
+		return *median;
 	}
-	auto do_vec_test(int i)
+
+	template<class Generator>
+	auto set_insert_test(int i, Generator g)
 	{
-		auto t0 = std::chrono::high_resolution_clock::now();
-		auto a = std::vector<int>(i);
-		for (int j = 0; j < i; ++j)
+		return time_median([&]
 		{
-			a.push_back(j+j);
-		}
-		return (std::chrono::high_resolution_clock::now() - t0).count();
+			auto a = g(i);
+			for (int j = 0; j < i; ++j)
+			{
+				a.insert(j + j);
+			}
+		});
+	}
+
+	template<class Generator>
+	auto set_erase_test(int i, Generator g)
+	{
+		return time_median([&]
+		{
+			auto a = g(i);
+			for (int j = 0; j < i; ++j)
+			{
+				a.insert(j + j);
+				a.erase(j + j);
+			}
+		});
 	}
 	template<class T>
-	void save_timing(const char* file, T begin, T end)
+	bool contains(std::set<T>& a, T val)
 	{
-		std::ofstream out(file);
+		return a.find(val) != a.end();
+	}
+
+	template<class T>
+	bool contains(std::unordered_set<T>& a, T val)
+	{
+		return a.find(val) != a.end();
+	}
+	template<class T>
+	bool contains(hov_set<T>& a, T val)
+	{
+		return a.find(val).second;
+	}
+	template<class T>
+	bool contains(vector_set_adapter<T>& a, T val)
+	{
+		return a.data.size() > 0 && a.data.back() == val;
+	}
+	template<class T, T i>
+	bool contains(hoc_set<T, i>& a, T val)
+	{
+		return a.find(val).second;
+	}
+	template<class Generator>
+	auto set_abuse_test(int i, Generator g)
+	{
+		return time_median([&]
+		{
+			auto a = g(i);
+			for (int j = 0; j < i; ++j)
+			{
+				a.insert(j + 2);
+				if (contains(a, j))
+				{
+					a.erase(j);
+				}
+			}
+		});
+	}
+
+	template<class T, class OUT>
+	void save_timing(OUT& out, T begin, T end)
+	{
 		while (begin != end)
 		{
 			out << *begin;
 			out << ",";
 			++begin;
 		}
+		out << "\n";
 	}
-	void perf_tests()
+
+	template<class TEST>
+	void uniform_perf_test(const char* file, TEST test)
 	{
 		size_t N = 10000;
 		std::vector<uint32_t> unorderedsettimes;
@@ -149,19 +239,32 @@ namespace sg14_test
 		std::vector<uint32_t> hocsettimes;
 		std::vector<uint32_t> hovsettimes;
 		std::vector<uint32_t> vectimes;
-		for (size_t i = 240; i < N; i+=10)
+		for (size_t i = 0; i < N; i+=500)
 		{
-			unorderedsettimes.push_back( do_set_test(i, [](size_t N) {return std::unordered_set<int>(N); }) );
-			hocsettimes.push_back( do_set_test(i, [](size_t N) { return hoc_set<int, -1>(N); }) );
-			hovsettimes.push_back( do_set_test(i, [](size_t N) { return hov_set<int>(N, -1); }) );
-			settimes.push_back( do_set_test(i, [](size_t N) { return std::set<int>(); }) );
-			vectimes.push_back(do_vec_test(i));
+			unorderedsettimes.push_back( test(i, [](size_t N) {return std::unordered_set<int>(N); }) );
+			hocsettimes.push_back( test(i, [](size_t N) { return hoc_set<int, -1>(N); }) );
+			hovsettimes.push_back( test(i, [](size_t N) { return hov_set<int>(N, -1); }) );
+			settimes.push_back( test(i, [](size_t N) { return std::set<int>(); }) );
+			vectimes.push_back(test(i, [](size_t N) { return vector_set_adapter<int>(N); }));
 		}
-		save_timing("vec.csv", vectimes.begin(), vectimes.end());
-		save_timing("set.csv", settimes.begin(), settimes.end());
-		save_timing("hoc_set.csv", hocsettimes.begin(), hocsettimes.end());
-		save_timing("hov_set.csv", hovsettimes.begin(), hovsettimes.end());
-		save_timing("unordered.csv", unorderedsettimes.begin(), unorderedsettimes.end());
+		std::ofstream out(file);
+		out << "vec, "; save_timing(out, vectimes.begin(), vectimes.end());
+		out << "set, "; save_timing(out, settimes.begin(), settimes.end());
+		out << "hoc, "; save_timing(out, hocsettimes.begin(), hocsettimes.end());
+		out << "hov, "; save_timing(out, hovsettimes.begin(), hovsettimes.end());
+		out << "uno, "; save_timing(out, unorderedsettimes.begin(), unorderedsettimes.end());
+	}
+
+	void hotset_change_tombstone_test()
+	{
+		hov_set<int> a(100, 0);
+		a.insert(1);
+		a.insert(2);
+		a.insert(100);
+		assert(a.size() == 3);
+
+		a.change_tombstone(1);
+		assert(a.size() == 2);
 	}
 
 	void hotset()
@@ -176,7 +279,10 @@ namespace sg14_test
 		hotset_each_test(dyset);
 		hotset_each_test(stset);
 
+		hotset_change_tombstone_test();
 
-		perf_tests();
+		uniform_perf_test("insert_perf.csv",[](auto&&... As) {return set_insert_test(As...); });
+		uniform_perf_test("erase_perf.csv", [](auto&&... As) {return set_erase_test(As...); });
+		uniform_perf_test("abuse.csv", [](auto&&... As) {return set_abuse_test(As...); });
 	}
 }

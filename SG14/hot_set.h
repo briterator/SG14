@@ -3,12 +3,11 @@
 #include <memory>
 #include <algorithm>
 #include "algorithm_ext.h"
-//hot stands for hash, open-addressing w/ tombstone
-//note: this class is untested and incomplete
 
-struct default_open_addressing_load_algorithm
+struct default_load_policy
 {
 	//how many elements can fit in this many buckets
+	//75% max occupancy
 	size_t occupancy(size_t allocated)
 	{
 		auto half = allocated >> 1;
@@ -26,12 +25,14 @@ struct default_open_addressing_load_algorithm
 		return size_t(1) << int(c);
 	}
 
+	//since this is a power of two algo we can use masking
 	template<class T>
 	T* select(T* begin, T* end, size_t hash) const
 	{
 		return begin + (hash & ((end - begin) - 1));
 	}
 
+	//doubles in size when growing
 	size_t grow(size_t allocated)
 	{
 		return std::max<size_t>(32, allocated << 1);
@@ -42,16 +43,19 @@ template<class T>
 struct variable
 {
 	T value;
-	variable()
-		:value()
-	{}
+	variable() = default;
+	variable(variable&&) = default;
+	variable(const variable&) = default;
 	variable(const T& value_)
 		:value(value_)
 	{}
 	variable(T&& value_)
 		:value(std::move(value_))
 	{}
-
+	variable& operator=(const variable&) = default;
+	variable& operator=(variable&&) = default;
+	variable& operator=(const T& value_) { value = value_; }
+	variable& operator=(T&& value_) { value = std::move(value_); }
 	const T& operator()() const
 	{
 		return value;
@@ -68,13 +72,16 @@ struct span
 	T* end() { return last;  }
 };
 
+//hot stands for hash, open-addressing w/ tombstone
+//note: this class is untested and incomplete
+
 template<
-	class T,					//contained type
-	class Tomb,					//tombstone generator function
+	class T,	//contained type
+	class Tomb,	//tombstone generator function
 	class Equal = std::equal_to<void>,//element comparator
-	class Alloc = std::allocator<T>,
-	class Hash = std::hash<T>,		
-	class Load = default_open_addressing_load_algorithm//load algorithm
+	class Alloc = std::allocator<T>, //allocator
+	class Hash = std::hash<T>,	//hasher
+	class Load = default_load_policy//controls load factor and related concerns
 >
 class hot_set
 {
@@ -92,7 +99,6 @@ class hot_set
 	{
 		if (size > 0)
 		{
-			//assert(powerOfTwo(size));
 			mbegin = allocator.allocate(size);
 			mend = mbegin + size;
 			std::uninitialized_fill(mbegin, mend, tomb_gen());
@@ -118,7 +124,7 @@ class hot_set
 			auto& value = *it;
 			if (!equal(tomb, value))
 			{
-				*find_internal(b, e, value).first = std::move(value);
+				*probe_find(b, e, value).first = std::move(value);
 			}
 			++it;
 		}
@@ -126,39 +132,21 @@ class hot_set
 		mend = e;
 		allocator.deallocate(oldbegin, oldend-oldbegin);		
 	}
-
-	void partial_rehash(T* first, T* pos, T* last)
-	{
-		auto tomb = tomb_gen();
-		auto current = pos;
-		for (int i = 0; i < 2; ++i)
-		{
-			while (current != last)
-			{
-				auto& value = *current;
-				if (eq(value, tomb))
-				{
-					return;
-				}
-				else
-				{
-					auto temp = std::move(value);
-					value = tomb;
-					*find_internal(mbegin, mend, temp).first = std::move(temp);
-				}
-				++current;
-			};
-			current = first;
-			last = pos;
-		}
-	}
 	void remove_internal(T* first_, T* element_, T* last_)
 	{
 		--moccupied;
-		*element_ = tomb_gen();
-		partial_rehash(first_, element_, last_);
+		auto tomb = tomb_gen();
+		*element_ = tomb;
+		
+		//rehash elements that may have collided
+		probe(first_, element_, last_, [&](T& value)
+		{
+			auto temp = std::move(value);
+			value = tomb;
+			*probe_find(first_, last_, temp).first = std::move(temp);
+		});
 	}
-	auto find_internal(T* first_, T* last_, const T& in_) const
+	auto probe_find(T* first_, T* last_, const T& in_) const
 	{
 		auto start = load_alg.select(first_, last_, hash(in_));
 		auto equal = eq;
@@ -184,6 +172,32 @@ class hot_set
 		};
 
 		return std::make_pair(last_, false);
+	}
+
+	template<class Func>
+	void probe(T* first_, T* start_, T* last_, Func f) const
+	{
+		auto equal = eq;
+		auto tomb = tomb_gen();
+		auto current = start_;
+		for (int i = 0; i < 2; ++i)
+		{
+			while (current != last_)
+			{
+				auto& value = *current;
+				if (equal(tomb, value))
+				{
+					return;
+				}
+				else
+				{
+					f(value);
+				}
+				++current;
+			};
+			last_ = start_;
+			current = first_;
+		};
 	}
 public:
 	struct iterator : std::iterator< std::forward_iterator_tag, T>
@@ -248,7 +262,7 @@ public:
 		, load_alg(in.load_alg)
 		, eq(in.eq)
 	{
-		auto size = in.reserved();
+		auto size = in.allocated();
 		mbegin = allocator.allocate(size);
 		mend = mbegin + size;
 		std::uninitialized_copy(in.mbegin, in.mend, mbegin);
@@ -296,11 +310,11 @@ public:
 	}
 	bool is_invalid(const T& value_) const
 	{
-		return eq(tombstone(), value_);
+		return eq(tomb_gen(), value_);
 	}
 
 	//number of elements allocated by the set
-	size_t reserved() const
+	size_t allocated() const
 	{
 		return mend - mbegin;
 	}
@@ -336,7 +350,7 @@ public:
 	template<class U>
 	auto insert(U&& value_)
 	{
-		if (mcapacity != moccupied) {}else
+		if (mcapacity == moccupied)
 		{
 			rehash(load_alg.grow(mend - mbegin));
 		}
@@ -349,7 +363,7 @@ public:
 	template<class U>
 	auto stable_insert(U&& value_)
 	{
-		auto result = find_internal(mbegin, mend, value_);
+		auto result = probe_find(mbegin, mend, value_);
 		*result.first = std::forward<U>(value_);
 		moccupied += uint32_t(result.second == false);
 		return result;
@@ -364,13 +378,41 @@ public:
 	{
 		auto b = mbegin;
 		auto e = mend;
-		auto found = find_internal(b, e, value_);
+		auto found = probe_find(b, e, value_);
 		if (found.second)
 		{
 			remove_internal(b, found.first, e);
 			return true;
 		}
 		return false;
+	}
+	size_t change_tombstone(Tomb tomb_gen_)
+	{
+		auto b = mbegin;
+		auto e = mend;
+		Equal equal = eq;
+		auto new_tomb = tomb_gen_();
+		auto tomb = tomb_gen();
+		size_t num_changed = 0;
+		if (equal(new_tomb, tomb))
+		{
+			return 0;
+		}
+		while (b != e)
+		{
+			if (equal(*b, tomb))
+			{
+				*b = new_tomb;
+			}
+			else if (equal(*b, new_tomb))
+			{
+				++num_changed;
+			}
+			++b;
+		}
+		moccupied -= num_changed;
+		tomb_gen = std::move(tomb_gen_);
+		return num_changed;
 	}
 	decltype(auto) tombstone() const
 	{
@@ -385,20 +427,46 @@ public:
 	//invalidates all iterators
 	bool clear()
 	{
-		std::fill(begin, end, tombstone());
+		std::fill(begin, end, tomb_gen());
 		moccupied = 0;
 	}
 
+	//returns pair:
+	// location where value_ would be found if it were in the set
+	// boolean denoting whether or not it actually is in the set
 	auto find(const T& value_) const
 	{
-		return find_internal(mbegin, mend, value_);
+		return probe_find(mbegin, mend, value_);
 	}
-
+	template<class Func>
+	void find_each(const T& value_, Func predicate_) const
+	{
+		auto start = load_alg.select(mbegin, mend, hash(value_));
+		auto equal = eq;
+		probe(mbegin, start, mend, [&](const T& found) {
+			if (equal(found, value_))
+			{
+				predicate_(found);
+			}
+		});
+	}
 	bool contains(const T& value_) const
 	{
-		return find_internal(mbegin, mend, value_).second;
+		return find(value_).second;
 	}
-
+	auto count(const T& value_) const
+	{
+		size_t num = 0;
+		Equal equal = eq;
+		probe(value_, [&](const T& found)
+		{
+			if (equal(found, value_))
+			{
+				++num;
+			}
+		});
+		return num;
+	}
 	auto begin() const
 	{
 		return iterator(mbegin, *this);
