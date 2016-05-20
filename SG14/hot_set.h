@@ -275,7 +275,7 @@ public:
 		, moccupied(in.moccupied)
 		, Alloc(std::move(in))
 		, hash(std::move(in.hash))
-		, cap(std::move(in.cap))
+		, load_alg(std::move(in.load_alg))
 		, eq(std::move(in.eq))
 	{
 		in.mcapacity = 0;
