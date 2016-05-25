@@ -43,6 +43,10 @@ namespace sg14_test
 			set.erase(x);
 		}
 		assert(set.size() == 0);
+		for (auto& elem : set.raw_view())
+		{
+			assert(elem == set.tombstone());
+		}
 	}
 
 	template<class T>
@@ -85,14 +89,40 @@ namespace sg14_test
 			assert(set.contains(elem));
 		}
 	}
-
+	template<class T>
+	void hotset_test_4(T set)
+	{
+		for (int i = 0; i < 500; ++i)
+		{
+			set.insert(i);
+		}
+		for (int i = 499; i >=400; --i)
+		{
+			set.erase(i);
+		}
+		assert(set.size() == 400);
+		for (auto& elem : set)
+		{
+			assert(elem < 400);
+			assert(elem >= 0);
+		}
+		for (int i = 0; i < 400; ++i)
+		{
+			set.erase(i);
+		}
+		assert(set.size() == 0);
+		for (auto& elem : set.raw_view())
+		{
+			assert(elem == -1);
+		}
+	}
 	template<class T>
 	void hotset_each_test(T func)
 	{
 		hotset_test_1(func());
 		hotset_test_2(func());
 		hotset_test_3(func());
-
+		hotset_test_4(func());
 	}
 
 	void hotmap_each_test()
