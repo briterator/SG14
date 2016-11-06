@@ -248,9 +248,9 @@ namespace sg14_test
 		}
 		std::ofstream out(file);
 		out << "set, "; save_timing(out, settimes.begin(), settimes.end());
-		out << "hoc, "; save_timing(out, hocsettimes.begin(), hocsettimes.end());
-		out << "hov, "; save_timing(out, hovsettimes.begin(), hovsettimes.end());
-		out << "uno, "; save_timing(out, unorderedsettimes.begin(), unorderedsettimes.end());
+		out << "hoc_set, "; save_timing(out, hocsettimes.begin(), hocsettimes.end());
+		out << "hot_set, "; save_timing(out, hovsettimes.begin(), hovsettimes.end());
+		out << "unordered_set, "; save_timing(out, unorderedsettimes.begin(), unorderedsettimes.end());
 	}
 
 	void hotset_change_tombstone_test()
