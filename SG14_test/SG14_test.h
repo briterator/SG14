@@ -6,6 +6,8 @@ namespace sg14_test
 	void unstable_remove_test();
 	void uninitialized();
 	void hotset();
+	void hotmap();
+	void sort_test();
 }
 
 #endif

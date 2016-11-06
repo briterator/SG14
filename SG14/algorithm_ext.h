@@ -2,6 +2,11 @@
 
 namespace stdext
 {
+	template<class T>
+	void destroy_at(T* data)
+	{
+		data->~T();
+	}
 	template<class ForwardIterator>
 	void destroy(ForwardIterator begin, ForwardIterator end)
 	{
@@ -92,6 +97,7 @@ namespace stdext
 
 			*first = std::move(*last);
 		}
+
 		return (first);
 	}
 

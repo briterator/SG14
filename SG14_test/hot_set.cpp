@@ -9,27 +9,6 @@
 #include <fstream>
 namespace sg14_test
 {
-	//this class serves to compare the cost of push_back vs. set insertion
-	//the theory is that inserting into a set is unlikely to ever be faster than push_back
-	template<class T>
-	struct vector_set_adapter
-	{
-		std::vector<T> data;
-		vector_set_adapter(size_t N)
-			:data(N)
-		{
-		}
-		vector_set_adapter(const vector_set_adapter&) = default;
-		vector_set_adapter(vector_set_adapter&&) = default;
-		void insert(T i)
-		{
-			data.push_back(i);
-		}
-		void erase(T i)
-		{
-			data.pop_back();
-		}
-	};
 
 	template<class T>
 	void hotset_test_1(T set)
@@ -43,7 +22,7 @@ namespace sg14_test
 			set.erase(x);
 		}
 		assert(set.size() == 0);
-		for (auto& elem : set.raw_view())
+		for (auto& elem : set.raw_span())
 		{
 			assert(elem == set.tombstone());
 		}
@@ -111,7 +90,7 @@ namespace sg14_test
 			set.erase(i);
 		}
 		assert(set.size() == 0);
-		for (auto& elem : set.raw_view())
+		for (auto& elem : set.raw_span())
 		{
 			assert(elem == -1);
 		}
@@ -174,7 +153,7 @@ namespace sg14_test
 			p();
 			measured.push_back((std::chrono::high_resolution_clock::now() - t0).count());
 		}
-		auto median = measured.begin() + 4;
+		auto median = measured.begin() + (measured.size()/2);
 		std::nth_element(measured.begin(), median, measured.end());
 		return *median;
 	}
@@ -216,21 +195,12 @@ namespace sg14_test
 	{
 		return a.find(val) != a.end();
 	}
-	template<class T>
-	bool contains(hov_set<T>& a, T val)
+	template<class T, class U>
+	bool contains(hot_set<T, U>& a, T val)
 	{
 		return a.find(val).second;
 	}
-	template<class T>
-	bool contains(vector_set_adapter<T>& a, T val)
-	{
-		return a.data.size() > 0 && a.data.back() == val;
-	}
-	template<class T, T i>
-	bool contains(hoc_set<T, i>& a, T val)
-	{
-		return a.find(val).second;
-	}
+
 	template<class Generator>
 	auto set_abuse_test(int i, Generator g)
 	{
@@ -268,17 +238,15 @@ namespace sg14_test
 		std::vector<uint32_t> settimes;
 		std::vector<uint32_t> hocsettimes;
 		std::vector<uint32_t> hovsettimes;
-		std::vector<uint32_t> vectimes;
 		for (size_t i = 0; i < N; i+=500)
 		{
 			unorderedsettimes.push_back( test(i, [](size_t N) {return std::unordered_set<int>(N); }) );
 			hocsettimes.push_back( test(i, [](size_t N) { return hoc_set<int, -1>(N); }) );
-			hovsettimes.push_back( test(i, [](size_t N) { return hov_set<int>(N, -1); }) );
+			hovsettimes.push_back( test(i, [](size_t N) { return hot_set<int>(N, -1); }) );
 			settimes.push_back( test(i, [](size_t N) { return std::set<int>(); }) );
-			vectimes.push_back(test(i, [](size_t N) { return vector_set_adapter<int>(N); }));
+			
 		}
 		std::ofstream out(file);
-		out << "vec, "; save_timing(out, vectimes.begin(), vectimes.end());
 		out << "set, "; save_timing(out, settimes.begin(), settimes.end());
 		out << "hoc, "; save_timing(out, hocsettimes.begin(), hocsettimes.end());
 		out << "hov, "; save_timing(out, hovsettimes.begin(), hovsettimes.end());
@@ -287,7 +255,7 @@ namespace sg14_test
 
 	void hotset_change_tombstone_test()
 	{
-		hov_set<int> a(100, 0);
+		hot_set<int> a(100, 0);
 		a.insert(1);
 		a.insert(2);
 		a.insert(100);
@@ -300,7 +268,7 @@ namespace sg14_test
 	void hotset()
 	{
 
-		auto dyset = [] {return hov_set<int>{32, -1 }; }; //hotset with runtime tombstone
+		auto dyset = [] {return hot_set<int>{32, -1 }; }; //hotset with runtime tombstone
 		auto stset = [] {return hoc_set<int, -1>{ 64, }; }; //hotset with compile-time tombstone
 
 		hotmap_each_test();
@@ -314,5 +282,17 @@ namespace sg14_test
 		uniform_perf_test("insert_perf.csv",[](auto&&... As) {return set_insert_test(As...); });
 		uniform_perf_test("erase_perf.csv", [](auto&&... As) {return set_erase_test(As...); });
 		uniform_perf_test("abuse.csv", [](auto&&... As) {return set_abuse_test(As...); });
+	}
+}
+
+
+namespace sg14_test
+{
+
+	void hotmap()
+	{
+		hoc_map<int, int, 0> data(64);
+		data.insert( 1, 100 );
+		data.insert(2, -3);
 	}
 }
