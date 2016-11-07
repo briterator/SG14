@@ -663,7 +663,7 @@ class hot_map
 		//only destroy values which were constructed (have a corresponding valid key)
 		for (size_t i = 0; i < n; ++i)
 		{
-			if (equal(kb[i], tomb))
+			if (!equal(kb[i], tomb))
 			{
 				std::allocator_traits<ValAlloc>::destroy(vallocator_, vb + i);
 			}
@@ -771,7 +771,7 @@ public:
 		, vbegin_(nullptr)
 		, allocated_(0)
 	{
-		init(load_alg_.allocated(capacity_));
+		init(load_alg_.allocated(capacity));
 	}
 
 	hot_map& operator=(const hot_map& other)
