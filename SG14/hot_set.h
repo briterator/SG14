@@ -16,6 +16,39 @@ namespace sg14
 }
 namespace stdext
 {
+	template<class T, class Alloc>
+	T* uninitialized_copy_a(Alloc& a, const T* begin, const T* end, T* dest)
+	{
+		while (begin != end)
+		{
+			std::allocator_traits<Alloc>::construct(a, begin, *dest);
+			++dest;
+			++begin;
+		}
+		return dest;
+	}
+
+	template<class T, class Alloc>
+	T* uninitialized_fill_a(Alloc& a, T* begin, T* end, const T& value)
+	{
+		while (begin != end)
+		{
+			std::allocator_traits<Alloc>::construct(a, begin, value);
+			++begin;
+		}
+		return begin;
+	}
+
+	template<class T, class Alloc>
+	void destroy_a(Alloc& a, T* begin, T* end)
+	{
+		while (begin != end)
+		{
+			std::allocator_traits<Alloc>::destroy(a, begin);
+			++begin;
+		}
+	}
+
 	//search the range [first, last) for either an element == tombstone or an element == search
 	//searches linearly from [probe_start, last) then linearly from [first, probe_start)
 	template<class ForwardIterator, class UnaryFunction, class Key>
@@ -139,7 +172,7 @@ class hot_set
 		{
 			begin_ = allocator_.allocate(size);
 			allocated_ = size;
-			std::uninitialized_fill(begin_, begin_+allocated_, tombstone());
+			stdext::uninitialized_fill_a(allocator_, begin_, begin_+allocated_, tombstone());
 			occupied_ = 0;
 			capacity_ = load_alg_.occupancy(size);
 		}
@@ -154,17 +187,14 @@ class hot_set
 		auto tomb = tombstone();
 		auto b = allocator_.allocate(newsize);
 		auto e = b + newsize;
-		std::uninitialized_fill(b, e, tomb);
-		auto it = oldbegin;
+		stdext::uninitialized_fill_a(allocator_, b, e, tomb);
 		auto equal = eq_;
-		while (it != oldend)
+		for (auto& elem : span<T>{ oldbegin, oldend } )
 		{
-			auto& value = *it;
-			if (!equal(tomb, value))
+			if (!equal(tomb, elem))
 			{
-				*probe_find(b, e, value).first = std::move(value);
+				*probe_find(b, e, elem).first = std::move(elem);
 			}
-			++it;
 		}
 		begin_ = b;
 		allocated_ = newsize;
@@ -234,7 +264,8 @@ public:
 		}
 		void advance()
 		{
-			current = std::find_if(current, set.begin_+set.allocated_, [&](T& elem) { return !set.is_tombstone(elem); });
+			auto c = set.tombstone_compare();
+			current = std::find_if(current, set.begin_ + set.allocated_, [&c](auto& elem){return !c(elem); });
 		}
 		iterator operator++(int)
 		{
@@ -281,7 +312,7 @@ public:
 		auto size = in.allocated();
 		begin_ = allocator_.allocate(size);
 		allocated_ = size;
-		std::uninitialized_copy(in.begin_, in.begin_+in.allocated_, begin_);
+		stdext::uninitialized_copy_a(allocator_, in.raw_span().begin(), in.raw_span().end(), begin_);
 	}
 
 	hot_set(hot_set&& in)
@@ -324,9 +355,11 @@ public:
 		~hot_set();
 		return *new(this) hot_set(std::move(other));
 	}
-	bool is_tombstone(const T& value) const
+	auto tombstone_compare() const
 	{
-		return eq_(tombstone(), value);
+		auto t = tombstone();
+		auto equal = eq_;
+		return [=](const T& candidate){ return equal(candidate, t); };
 	}
 
 	//number of elements allocated by the set
@@ -347,7 +380,7 @@ public:
 		return occupied_;
 	}
 
-	span<const T> raw_span()
+	span<const T> raw_span() const
 	{
 		return{ begin_, begin_+allocated_ };
 	}
@@ -404,17 +437,16 @@ public:
 	}
 	size_t change_tombstone(Tomb tomb_gen)
 	{
-		auto b = begin_;
-		auto e = begin_+allocated_;
 		Equal equal = eq_;
 		auto new_tomb = tomb_gen();
 		auto tomb = tombstone();
-		size_t num_changed = 0;
 		if (equal(new_tomb, tomb))
 		{
 			return 0;
 		}
-		while (b != e)
+		size_t num_changed = 0;
+		auto e = begin_ + allocated_;
+		for (auto b = begin_; b != e; ++b)
 		{
 			if (equal(*b, tomb))
 			{
@@ -424,7 +456,6 @@ public:
 			{
 				++num_changed;
 			}
-			++b;
 		}
 		occupied_ -= num_changed;
 		tomb_gen_ = std::move(tomb_gen);
@@ -441,9 +472,9 @@ public:
 	}
 
 	//invalidates all iterators
-	bool clear()
+	void clear()
 	{
-		std::fill(begin, end, tombstone());
+		std::fill(begin_, end_, tombstone());
 		occupied_ = 0;
 	}
 
@@ -472,7 +503,7 @@ public:
 
 	~hot_set()
 	{
-		stdext::destroy(begin_, begin_+allocated_);
+		stdext::destroy_a(allocator_, begin_, begin_ + allocated_);
 		allocator_.deallocate(begin_, allocated_);
 	}
 };
@@ -516,7 +547,7 @@ class hot_map
 			vbegin_ = vallocator_.allocate(size);
 			allocated_ = size;
 
-			std::uninitialized_fill(kbegin_, kbegin_+size, tombstone());
+			stdext::uninitialized_fill_a(kallocator_, kbegin_, kbegin_+size, tombstone());
 			occupied_ = 0;
 			capacity_ = load_alg_.occupancy(size);
 		}
@@ -535,7 +566,7 @@ class hot_map
 		auto ke = kb + newsize;
 		auto vb = vallocator_.allocate(newsize);
 		auto ve = vb + newsize;
-		std::uninitialized_fill(kb, ke, tomb);
+		stdext::uninitialized_fill_a(kallocator_, kb, ke, tomb);
 		
 		auto oldkit = oldkbegin;
 		auto oldvit = oldvbegin;
@@ -551,7 +582,7 @@ class hot_map
 				auto kpos = probe_find(kb, ke, old_key).first;
 				*kpos = std::move(old_key);
 				auto vpos = (kpos - kb);
-				new(vb + vpos) Value (std::move(old_val));
+				std::allocator_traits<ValAlloc>::construct(vallocator_, vb + vpos, std::move(old_val) );
 			}
 			++oldkit;
 		}
@@ -567,7 +598,7 @@ class hot_map
 		auto tomb = tombstone();
 		*element = tomb;
 		auto v_pos = v_begin + (element - first);
-		stdext::destroy_at(v_pos);
+		std::allocator_traits<VAlloc>::destroy(vallocator_, v_pos);
 
 		auto value_position = [vbegin_, first](Key* key)
 		{
@@ -579,12 +610,13 @@ class hot_map
 			auto new_key_position = probe_find(first_, last_, element).first;
 			if (new_key_position != &element)
 			{
+				//our probe definitely found a tombstone, so the corresponding value bucket is uninitialized already.
 				assert(element == tomb);
 				*new_key_position = std::move(element);
 				element = tomb;
 				auto old_value_position = value_position(&element);
-				new (value_pointer(new_key_position)) Value(std::move(*old_value_position));
-				stdext::destroy_at(old_value_position);
+				std::allocator_traits<ValAlloc>::construct(vallocator_, value_position(new_key_position), std::move(*old_value_position));
+				std::allocator_traits<ValAlloc>::destroy(vallocator_, old_value_position);
 			}
 
 		});
@@ -620,6 +652,23 @@ class hot_map
 			current = first_;
 		};
 	}
+
+	void destroy_values()
+	{
+		auto kb = kbegin_;
+		auto n = allocated_;
+		auto equal = eq_;
+		auto vb = vbegin_;
+		auto tomb = tombstone();
+		//only destroy values which were constructed (have a corresponding valid key)
+		for (size_t i = 0; i < n; ++i)
+		{
+			if (equal(kb[i], tomb))
+			{
+				std::allocator_traits<ValAlloc>::destroy(vallocator_, vb + i);
+			}
+		}
+	}
 public:
 	struct iterator : std::iterator< std::forward_iterator_tag, std::pair<const Key&, Value&> >
 	{
@@ -639,7 +688,8 @@ public:
 		}
 		void advance()
 		{
-			kcurrent_ = std::find_if(kcurrent_, map_.kbegin_+map_.allocated_, [&](T& elem) { return !set.is_tombstone(elem); });
+			auto c = tombstone_compare();
+			kcurrent_ = std::find_if(kcurrent_, map_.kbegin_ + map_.allocated_, [&c](auto& elem){return !c(elem); });
 		}
 		iterator operator++(int)
 		{
@@ -685,7 +735,7 @@ public:
 		kbegin_ = kallocator_.allocate(size);
 		vbegin_ = vallocator_.allocate(size);
 		allocated_ = size;
-		std::uninitialized_copy(in.kbegin_, in.kbegin_+in.allocated_, begin_);
+		stdext:uninitialized_copy_a(kallocator_, in.kbegin_, in.kbegin_+in.allocated_, begin_);
 		//todo conditionally copy values
 		asdfasf;
 	}
@@ -757,7 +807,7 @@ public:
 		return occupied_;
 	}
 
-	span<Key> raw_key_span()
+	span<Key> raw_key_span() const
 	{
 		return{ kbegin_, kbegin_+allocated_ };
 	}
@@ -766,6 +816,10 @@ public:
 		return{ vbegin_, vbegin_ + allocated_ };
 	}
 
+	span<const Value> raw_value_span() const
+	{
+		return{ vbegin_, vbegin_ + allocated_ };
+	}
 	void shrink()
 	{
 		auto target_size = load_alg.allocated(capacity_);
@@ -797,7 +851,7 @@ public:
 		auto v_pos = vbegin_ + (result.first - kbegin_);
 		if (is_tombstone(*result.first))
 		{
-			new(v_pos) Value(std::forward<V>(value));		
+			std::allocator_traits<ValAlloc>::construct(vallocator_, v_pos, std::forward<V>(value));		
 		}
 		else
 		{ 
@@ -821,9 +875,8 @@ public:
 		if (found.second)
 		{
 			remove_internal(b, found.first, e);
-			return true;
 		}
-		return false;
+		return found.second;
 	}
 	size_t change_tombstone(Tomb tomb_gen)
 	{
@@ -848,14 +901,14 @@ public:
 			else if (equal(b[i], new_tomb))
 			{
 				++num_changed;
-				stdext::destroy_at(v + i); //value is no longer valid, must destroy it
+				std::allocator_traits<ValAlloc>::destroy(vallocator_, v + i); //value is no longer valid, must destroy it
 			}
 		}
 		occupied_ -= num_changed;
 		tomb_gen_ = std::move(tomb_gen);
 		return num_changed;
 	}
-	decltype(auto) tombstone() const
+	constexpr decltype(auto) tombstone() const noexcept(noexcept(tomb_gen_()))
 	{
 		return tomb_gen_();
 	}
@@ -868,7 +921,8 @@ public:
 	//invalidates all iterators
 	bool clear()
 	{
-		std::fill(begin, end, tombstone());
+		destroy_values();
+		std::fill(kbegin_, kbegin_ + allocated_, tombstone());
 		occupied_ = 0;
 	}
 
@@ -898,20 +952,10 @@ public:
 	~hot_map()
 	{
 		auto n = allocated_;
-		auto tomb = tombstone();
-		auto kb = kbegin_;
-		auto vb = vbegin_;
-		//only destroy values which were constructed (have a corresponding valid key)
-		for (size_t i = 0; i < n; ++i)
-		{
-			if (eq_(kb[i], tomb))
-			{
-				stdext::destroy_at(vb + i);
-			}
-		}
-		stdext::destroy(kbegin_, kbegin_+allocated_);
-		kallocator_.deallocate(kbegin_, allocated_);
-		vallocator_.deallocate(vbegin_, allocated_);
+		destroy_values();
+		stdext::destroy_a(kallocator_, kbegin_, kbegin_+n);
+		kallocator_.deallocate(kbegin_, n);
+		vallocator_.deallocate(vbegin_, n);
 	}
 };
 

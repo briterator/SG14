@@ -13,8 +13,8 @@ namespace sg14_test
 	template<class T>
 	void hotset_test_1(T set)
 	{
-		auto tombstone = set.tombstone();
-		assert(tombstone == -1);
+		auto tombstone_comp = set.tombstone_compare();
+		assert(tombstone_comp(-1));
 		for (int i = 0; i < 100; ++i)
 		{
 			auto x = rand();
@@ -24,7 +24,7 @@ namespace sg14_test
 		assert(set.size() == 0);
 		for (auto& elem : set.raw_span())
 		{
-			assert(elem == set.tombstone());
+			assert(tombstone_comp(elem));
 		}
 	}
 
@@ -233,12 +233,12 @@ namespace sg14_test
 	template<class TEST>
 	void uniform_perf_test(const char* file, TEST test)
 	{
-		size_t N = 10000;
-		std::vector<uint32_t> unorderedsettimes;
-		std::vector<uint32_t> settimes;
-		std::vector<uint32_t> hocsettimes;
-		std::vector<uint32_t> hovsettimes;
-		for (size_t i = 0; i < N; i+=500)
+		int32_t N = 10000;
+		std::vector<uint64_t> unorderedsettimes;
+		std::vector<uint64_t> settimes;
+		std::vector<uint64_t> hocsettimes;
+		std::vector<uint64_t> hovsettimes;
+		for (int32_t i = 0; i < N; i+=500)
 		{
 			unorderedsettimes.push_back( test(i, [](size_t N) {return std::unordered_set<int>(N); }) );
 			hocsettimes.push_back( test(i, [](size_t N) { return hoc_set<int, -1>(N); }) );
@@ -269,7 +269,7 @@ namespace sg14_test
 	{
 
 		auto dyset = [] {return hot_set<int>{32, -1 }; }; //hotset with runtime tombstone
-		auto stset = [] {return hoc_set<int, -1>{ 64, }; }; //hotset with compile-time tombstone
+		auto stset = [] {return hoc_set<int, -1>{ 64 }; }; //hotset with compile-time tombstone
 
 		hotmap_each_test();
 		hotmultimap_each_test();
