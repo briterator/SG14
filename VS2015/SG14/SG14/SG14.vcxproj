@@ -21,6 +21,9 @@
   <ItemGroup>
     <ClInclude Include="..\..\..\SG14\algorithm_ext.h" />
     <ClInclude Include="..\..\..\SG14\hot_set.h" />
+    <ClInclude Include="..\..\..\SG14\span.h" />
+    <ClInclude Include="..\..\..\SG14\varray.h" />
+    <ClInclude Include="..\..\..\SG14\varray_allocators.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{71063685-C50D-4C69-AE56-7184DE4FECCB}</ProjectGuid>

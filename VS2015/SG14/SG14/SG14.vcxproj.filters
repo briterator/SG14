@@ -3,5 +3,8 @@
   <ItemGroup>
     <ClInclude Include="..\..\..\SG14\algorithm_ext.h" />
     <ClInclude Include="..\..\..\SG14\hot_set.h" />
+    <ClInclude Include="..\..\..\SG14\varray.h" />
+    <ClInclude Include="..\..\..\SG14\varray_allocators.h" />
+    <ClInclude Include="..\..\..\SG14\span.h" />
   </ItemGroup>
 </Project>
