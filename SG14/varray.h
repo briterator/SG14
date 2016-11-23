@@ -169,7 +169,7 @@ public:
 	{
 		if (capacity_ != count_)
 		{
-			capacity_ = allocator_.realloc(count_, count_, capacity_);
+			capacity_ = allocator_.realloc_exact(count_, count_, capacity_);
 		}
 	}
 
