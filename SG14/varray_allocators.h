@@ -53,6 +53,24 @@ struct buffer_allocator
 	};
 };
 
+namespace math
+{
+	uint64_t ceil_log2(uint64_t a) // ceil(log2(a))
+	{
+		unsigned long index;
+		if (_BitScanReverse64(&index, a))
+		{
+			return index + ((a & (a - 1)) ? 1 : 0);
+		}
+		return 0;
+	}
+
+	int64_t next_power_of_two(uint64_t a)
+	{
+		return int64_t(1) << ceil_log2(a);
+	}
+
+}
 template<size_t Min>
 struct grow_default
 {

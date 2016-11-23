@@ -15,8 +15,8 @@ int main(int, char *[])
 	//sg14_test::sort_test();
 	puts("tests completed");
 
-	varray<int, buffer_allocator<10>> y;
-	for (int i = 0; i < 10; ++i)
+	varray<int, bufheap_allocator<10>> y;
+	for (int i = 0; i < 100; ++i)
 	{
 		y.push_back(i);
 	}
