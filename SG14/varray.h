@@ -16,6 +16,12 @@ public:
 	constexpr varray() noexcept(true)
 		: count_(0), capacity_(0), allocator_()
 	{}
+	template<class... Args>
+	varray(std::allocator_arg_t, Args&&... args)
+		:count_(0), capacity_(0), allocator_(std::forward<Args>(args))
+	{
+
+	}
 	varray(std::initializer_list<T> items)
 		: count_(items.size())
 	{

@@ -247,3 +247,66 @@ struct fallback_allocator
 
 template<size_t N>
 using bufheap_allocator = fallback_allocator< buffer_allocator<N> >;
+
+#if 0
+struct example_poly_alloc
+{
+	template<class T>
+	struct typed
+	{
+		std::memory_resource* pmr;
+		T* ptr;
+		example_poly_alloc()
+			:pmr(nullptr)
+		{}
+		example_poly_alloc(std::experimental::memory_resource* resource)
+			:pmr(resource), ptr(nullptr)
+		{
+		};
+
+		void assign(typed&& other, int64_t othersize)
+		{
+			pmr = other.pmr;
+			other.pmr = nullptr;
+		}
+		void assign(const typed& other, int64_t othersize)
+		{
+			ptr = (T*) pmr->allocate(othersize, std::alignment_of<T>::value);
+			std::uninitialized_copy(other.ptr, other.ptr+othersize, ptr);
+		}
+		int64_t realloc_exact(int64_t old_size, int64_t desired_size, int64_t capacity)
+		{
+			if (desired_size == 0)
+			{
+				this->free(old_size);
+			}
+			else
+			{
+				auto new_ptr = pmr->allocate(desired_size, std::alignment_of<T>::value);
+				stdext::uninitialized_move(ptr, ptr + old_size, new_pmr);
+				this->free(old_size);
+				ptr = new_ptr;
+			}
+		}
+		int64_t realloc(int64_t old_size, int64_t desired_size, int64_t capacity)
+		{
+			//todo set up a growth policy for example_poly_alloc?
+			return realloc_exact(old_size, desired_size, capacity);
+		}
+		void free(int64_t size)
+		{
+			stdext::destroy(pmr, pmr + size);
+			pmr->deallocate(pmr, size, std::alignment_of<T>::value);
+		}
+		T* data() const
+		{
+			return ptr;
+		}
+		int64_t max_count() const
+		{
+			return std::numeric_limits<int64_t>::max();
+		}
+
+	};
+};
+#endif
