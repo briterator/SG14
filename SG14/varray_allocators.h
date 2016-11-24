@@ -42,7 +42,7 @@ struct buffer_allocator
 			assert(desired_size <= BufferCount);
 			return BufferCount;
 		}
-		void free(int64_t count)
+		void free(int64_t count, int64_t capacity_)
 		{
 			stdext::destroy(data(), data() + count);
 		}
@@ -115,7 +115,7 @@ struct heap_allocator
 		{
 			if (desired_size == 0)
 			{
-				this->free(size);
+				this->free(size, capacity);
 			}
 			else if (std::is_trivial<T>::value)
 			{
@@ -125,7 +125,7 @@ struct heap_allocator
 			{
 				auto new_data = (T*) ::malloc(desired_size * sizeof(T));
 				stdext::uninitialized_move(data_, data_ + size, new_data);
-				this->free(size);
+				this->free(size, capacity);
 				data_ = new_data;
 			}
 			return desired_size;
@@ -136,7 +136,7 @@ struct heap_allocator
 			desired_size = g(size, desired_size);
 			return realloc_exact(size, desired_size, capacity);
 		}
-		void free(int64_t size)
+		void free(int64_t size, int64_t capacity)
 		{
 			stdext::destroy(data_, data_ + size);
 			::free(data_);
@@ -203,7 +203,7 @@ struct fallback_allocator
 				{
 					//needs to be moved from b_
 					std::move(bdata, bdata + old_size, a_.data());
-					b_.free(old_size);
+					b_.free(old_size, capacity);
 				}
 				return result;
 			}
@@ -216,7 +216,7 @@ struct fallback_allocator
 				{
 					//data needs to be moved from a_ to b_
 					std::move(a_.data(), a_.data() + old_size, b_.data());
-					a_.free(old_size);
+					a_.free(old_size, capacity);
 				}
 
 				return result;
@@ -230,16 +230,16 @@ struct fallback_allocator
 		{
 			return do_realloc(old_size, desired_size, capacity, [](auto& a, auto b, auto c, auto d) { return a.realloc(b, c, d); });
 		}
-		void free(int64_t size)
+		void free(int64_t size, int64_t capacity)
 		{
 			auto bdata = b_.data();
 			if (bdata)
 			{
-				b_.free(size);
+				b_.free(size, capacity);
 			}
 			else
 			{
-				a_.free(size);
+				a_.free(size, capacity);
 			}
 		}
 	};
@@ -278,13 +278,13 @@ struct example_poly_alloc
 		{
 			if (desired_size == 0)
 			{
-				this->free(old_size);
+				this->free(old_size, capacity);
 			}
 			else
 			{
 				auto new_ptr = pmr->allocate(desired_size, std::alignment_of<T>::value);
 				stdext::uninitialized_move(ptr, ptr + old_size, new_pmr);
-				this->free(old_size);
+				this->free(old_size, capacity);
 				ptr = new_ptr;
 			}
 		}
@@ -293,10 +293,10 @@ struct example_poly_alloc
 			//todo set up a growth policy for example_poly_alloc?
 			return realloc_exact(old_size, desired_size, capacity);
 		}
-		void free(int64_t size)
+		void free(int64_t size, capacity)
 		{
 			stdext::destroy(pmr, pmr + size);
-			pmr->deallocate(pmr, size, std::alignment_of<T>::value);
+			pmr->deallocate(pmr, capacity, std::alignment_of<T>::value);
 		}
 		T* data() const
 		{

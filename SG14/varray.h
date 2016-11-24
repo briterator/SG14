@@ -315,7 +315,7 @@ public:
 
 	~varray() noexcept(true)
 	{
-		allocator_.free(count_);
+		allocator_.free(count_, capacity_);
 	}
 
 protected:
