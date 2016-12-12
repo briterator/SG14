@@ -4,6 +4,13 @@
 #include <algorithm>
 #include "algorithm_ext.h"
 
+template<class Iterator>
+struct probe_result
+{
+	Iterator position;
+	bool filled;
+};
+
 namespace sg14
 {
 	inline size_t first_set_bit(size_t n)
@@ -65,14 +72,14 @@ namespace stdext
 					++probe_start;
 					continue;
 				}
-				return std::make_pair(probe_start, found);
+				return probe_result<ForwardIterator>{probe_start, found};
 
 			}
 			last = probe_start;
 			probe_start = first;
 		}
 
-		return std::make_pair(last, false);
+		return probe_result<ForwardIterator>{last, false};
 	}
 }
 
@@ -143,6 +150,8 @@ struct span
 	T* end() { return last_;  }
 };
 
+
+
 //hot stands for hash, open-addressing w/ tombstone
 //note: this class is untested and incomplete
 
@@ -193,7 +202,7 @@ class hot_set
 		{
 			if (!equal(tomb, elem))
 			{
-				*probe_find(b, e, elem).first = std::move(elem);
+				*probe_find(b, e, elem).position = std::move(elem);
 			}
 		}
 		begin_ = b;
@@ -211,7 +220,7 @@ class hot_set
 		{
 			auto temp = std::move(value);
 			value = tomb;
-			*probe_find(first, last, temp).first = std::move(temp);
+			*probe_find(first, last, temp).position = std::move(temp);
 		});
 	}
 	auto probe_find(T* const first, T* last, const T& search) const
@@ -413,8 +422,11 @@ public:
 	auto stable_insert(U&& value)
 	{
 		auto result = probe_find(begin_, begin_+allocated_, value);
-		*result.first = std::forward<U>(value);
-		occupied_ += uint32_t(result.second == false);
+		if (!result.filled)
+		{
+			*result.position = std::forward<U>(value);
+		}
+		occupied_ += uint32_t(result.filled == false);
 		return result;
 	}
 	//removes element. invalidates all iterators.
@@ -428,9 +440,9 @@ public:
 		auto b = begin_;
 		auto e = begin_+allocated_;
 		auto found = probe_find(b, e, value);
-		if (found.second)
+		if (found.filled)
 		{
-			remove_internal(b, found.first, e);
+			remove_internal(b, found.position, e);
 			return true;
 		}
 		return false;
@@ -488,7 +500,7 @@ public:
 
 	bool contains(const T& value) const
 	{
-		return find(value).second;
+		return find(value).filled;
 	}
 
 	auto begin() const
@@ -579,12 +591,13 @@ class hot_map
 			auto& old_val = *oldvit;
 			if (!equal(old_key, tomb))
 			{
-				auto kpos = probe_find(kb, ke, old_key).first;
+				auto kpos = probe_find(kb, ke, old_key).position;
 				*kpos = std::move(old_key);
 				auto vpos = (kpos - kb);
 				std::allocator_traits<ValAlloc>::construct(vallocator_, vb + vpos, std::move(old_val) );
 			}
 			++oldkit;
+			++oldvit;
 		}
 		kallocator_.deallocate(oldkbegin, oldallocated);
 		vallocator_.deallocate(oldvbegin, oldallocated);
@@ -669,6 +682,22 @@ class hot_map
 			}
 		}
 	}
+	void copy_values(span<const Value> source)
+	{
+		auto kb = kbegin_;
+		auto n = allocated_;
+		auto equal = eq_;
+		auto vb = vbegin_;
+		auto tomb = tombstone();
+		//only destroy values which were constructed (have a corresponding valid key)
+		for (size_t i = 0; i < n; ++i)
+		{
+			if (!equal(kb[i], tomb))
+			{
+				std::allocator_traits<ValAlloc>::destroy(vallocator_, vb + i, source.begin() + i);
+			}
+		}
+	}
 public:
 	struct iterator : std::iterator< std::forward_iterator_tag, std::pair<const Key&, Value&> >
 	{
@@ -736,8 +765,7 @@ public:
 		vbegin_ = vallocator_.allocate(size);
 		allocated_ = size;
 		stdext:uninitialized_copy_a(kallocator_, in.kbegin_, in.kbegin_+in.allocated_, begin_);
-		//todo conditionally copy values
-		asdfasf;
+		copy_values(in.raw_value_span());
 	}
 
 	hot_map(hot_map&& in)
@@ -848,17 +876,17 @@ public:
 	auto stable_insert(K&& key, V&& value)
 	{
 		auto result = probe_find(kbegin_, kbegin_+allocated_, key);
-		auto v_pos = vbegin_ + (result.first - kbegin_);
-		if (is_tombstone(*result.first))
+		auto v_pos = vbegin_ + (result.position - kbegin_);
+		if (!result.filled)
 		{
-			std::allocator_traits<ValAlloc>::construct(vallocator_, v_pos, std::forward<V>(value));		
+			std::allocator_traits<ValAlloc>::construct(vallocator_, v_pos, std::forward<V>(value));
+			*result.position = std::forward<K>(key);
 		}
 		else
 		{ 
 			*(v_pos) = std::forward<V>(value);
 		}
-		*result.first = std::forward<K>(key);
-		occupied_ += uint32_t(result.second == false);
+		occupied_ += uint32_t(result.filled == false);
 		return result;
 	}
 	//removes element. invalidates all iterators.
@@ -866,7 +894,7 @@ public:
 	{
 		remove_internal(kbegin_, element, kbegin_+allocated_);
 	}
-	//removes element == value. invalidates all iterators.
+	//removes element with specified key. invalidates all iterators.
 	bool erase(const Key& key)
 	{
 		auto b = kbegin_;
@@ -937,6 +965,23 @@ public:
 	bool contains(const Key& key) const
 	{
 		return find(key).second;
+	}
+	Value& operator[](const Key& key)
+	{
+		auto result = find(key);
+		return result.filled ? vbegin + (result.position - kbegin_) : nullptr;
+	}
+	Value& operator[](Key&& key)
+	{
+		auto result = probe_find(kbegin_, kbegin_ + allocated_, key);
+		auto v_pos = vbegin_ + (result.position - kbegin_);
+		if (!result.filled)
+		{
+			std::allocator_traits<ValAlloc>::construct(vallocator_, v_pos);
+		}
+		occupied_ += uint32_t(result.filled == false);
+
+		return *v_pos;
 	}
 
 	auto begin() const

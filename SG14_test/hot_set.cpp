@@ -198,7 +198,7 @@ namespace sg14_test
 	template<class T, class U>
 	bool contains(hot_set<T, U>& a, T val)
 	{
-		return a.find(val).second;
+		return a.find(val).filled;
 	}
 
 	template<class Generator>
