@@ -66,3 +66,9 @@ xcuserdata
 # CLion
 cmake/.idea
 VS2015/SG14/SG14_test/hoc_set.csv
+*.db
+VS2015/SG14/.vs/SG14/v15/Solution.VC.db-wal
+*.db-shm
+*.ipch
+VS2015/SG14/.vs/SG14/v15/Browse.VC.opendb
+*.png

@@ -5,6 +5,7 @@
     <ClCompile Include="..\..\..\SG14_test\unstable_remove_test.cpp" />
     <ClCompile Include="..\..\..\SG14_test\uninitialized.cpp" />
     <ClCompile Include="..\..\..\SG14_test\hot_set.cpp" />
+    <ClCompile Include="..\..\..\SG14_test\exposed_ptr.test.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\SG14_test\SG14_test.h" />

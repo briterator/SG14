@@ -6,5 +6,6 @@
     <ClInclude Include="..\..\..\SG14\varray.h" />
     <ClInclude Include="..\..\..\SG14\varray_allocators.h" />
     <ClInclude Include="..\..\..\SG14\span.h" />
+    <ClInclude Include="..\..\..\SG14\exposed_ptr.h" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <intrin.h>
 #include "algorithm_ext.h"
 template<uint32_t BufferCount>
 struct buffer_allocator
@@ -52,7 +53,7 @@ struct buffer_allocator
 		typename std::aligned_storage<sizeof(T), alignof(T)>::type buffer[BufferCount];
 	};
 };
-
+#pragma intrinsic( _BitScanReverse64)
 namespace math
 {
 	uint64_t ceil_log2(uint64_t a) // ceil(log2(a))

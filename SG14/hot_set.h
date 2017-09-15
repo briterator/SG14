@@ -3,14 +3,14 @@
 #include <memory>
 #include <algorithm>
 #include "algorithm_ext.h"
-
+#include <intrin.h>
 template<class Iterator>
 struct probe_result
 {
 	Iterator position;
 	bool filled;
 };
-
+#pragma intrinsic( _BitScanReverse64)
 namespace sg14
 {
 	inline size_t first_set_bit(size_t n)

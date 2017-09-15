@@ -10,6 +10,7 @@
 #include <cassert>
 #include <fstream>
 #include <memory>
+#include <random>
 #include <chrono>
 
 auto not_one = [](auto& elem) {return elem[0] != 1; };
@@ -75,7 +76,8 @@ struct do_tests
 		std::vector<std::array<unsigned char, N>> list(count);
 		remove_count = std::min(remove_count, list.size());
 		std::fill_n(list.begin(), remove_count, std::array<unsigned char, N>{ 1 });
-		std::random_shuffle(list.begin(), list.end());
+		std::random_device rd;
+		std::shuffle(list.begin(), list.end(), rd);
 		return list;
 	}
 	do_tests(std::ostream& out)
